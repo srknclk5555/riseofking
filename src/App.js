@@ -278,52 +278,20 @@ export default function App() {
 
     console.log('[DEBUG] Setting up user data for UID:', uid);
 
-    const userDocRef = getUserDocRef(uid);
-    const unsubUser = onSnapshot(userDocRef, async (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        const nextUserData = docSnapshot.data();
-        setUserData(nextUserData);
-        setPrices(nextUserData.prices || {});
-
-        try {
-          const mainCharacter = nextUserData?.profile?.mainCharacter;
-          const token = localStorage.getItem('authToken');
-          const normalized = typeof mainCharacter === 'string' ? mainCharacter.trim() : '';
-          if (!token || !normalized) {
-            setLoading(false);
-            return;
-          }
-
-          if (lastSyncedMainCharacterRef.current === normalized) {
-            setLoading(false);
-            return;
-          }
-
-          if (syncInFlightRef.current) {
-            setLoading(false);
-            return;
-          }
-
-          syncInFlightRef.current = true;
-          await userService.updateProfile(uid, { mainCharacter: normalized });
-          lastSyncedMainCharacterRef.current = normalized;
-        } catch (e) {
-          console.warn('[SYNC_PROFILE] PostgreSQL profile sync failed:', e?.message || e);
-        } finally {
-          syncInFlightRef.current = false;
-        }
+    // User data handled by PostgreSQL API
+    const fetchUserData = async () => {
+      try {
+        const userData = await userService.getProfile(uid);
+        setUserData(userData);
+        setPrices(userData.prices || {});
         setLoading(false);
-      } else {
-        // User data already handled by PostgreSQL backend
+      } catch (error) {
+        console.error('Error fetching user data:', error);
         setLoading(false);
       }
-    }, (error) => {
-      console.error("User Snapshot Error:", error);
-      if (error.code === 'permission-denied') {
-        showNotification("Veri erişim yetkisi hatası alındı (User). Lütfen sayfayı yenileyin.", "error");
-      }
-      setLoading(false);
-    });
+    };
+    
+    fetchUserData();
 
     // PostgreSQL'den kullanıcı bildirimlerini çek
     const fetchNotifications = async () => {
@@ -1136,7 +1104,8 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
           return;
         }
 
-        await updateDoc(getPublicDocRef('farms', editData.id), farmData);
+        // PostgreSQL API call will be implemented
+        showNotification('Farm update functionality coming soon', 'info');
 
         // Bildirim Mantığı: Gelir değişti mi?
         const oldRevenue = editData.totalRevenue || 0;
@@ -1171,7 +1140,7 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
           type: 'PARTY',
           ownerId: uid,
           farmNumber: newFarmNumber,
-          createdAt: serverTimestamp()
+          createdAt: new Date().toISOString()
         };
 
         console.log('Creating new farm with data:', fullFarmData);
@@ -1183,7 +1152,8 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
           return;
         }
 
-        const docRef = await addDoc(getPublicCollectionRef('farms'), fullFarmData);
+        // PostgreSQL API call will be implemented
+        showNotification('Farm creation functionality coming soon', 'info');
 
         // Üyelere Bildirim Gönder
         members.forEach(member => {
@@ -1581,47 +1551,15 @@ const BossRunModal = ({ isOpen, onClose, activeClan, uid, userData, editData, sh
             }
             // EDİT MODU: Bankada hala var mı diye bak (Tutarsızlık Kontrolü)
             else {
-              const bankQuery = query(
-                getPublicCollectionRef('clan_bank_items'),
-                where('clanId', '==', activeClan.id)
-              );
-              const bankSnap = await getDocs(bankQuery);
-
-              for (const itemDoc of bankSnap.docs) {
-                const d = itemDoc.data();
-                const matchByRunId = d.sourceDetails?.bossRunId === runId;
-                const matchByName = d.itemName.trim() === drop.itemName.trim() && d.sourceDetails?.bossName === bossName.trim();
-
-                // İtem bankadaysa SİL ve Bakiyeyi Artırmayı onayla
-                if (matchByRunId || matchByName) {
-                  await deleteDoc(itemDoc.ref);
-                  console.log("Bankadan silindi:", d.itemName);
-                  balanceIncreaseNeeded = true;
-                }
-              }
+              // Clan bank operations - PostgreSQL implementation pending
+              balanceIncreaseNeeded = true;
             }
 
             if (balanceIncreaseNeeded && saleAmount > 0) {
               console.log("Bakiye Güncelleniyor:", saleAmount);
               try {
-                // First, try to get the current balance document
-                const balanceRef = getPublicDocRef('clan_balance', activeClan.id);
-                const balanceDoc = await getDoc(balanceRef);
-
-                if (balanceDoc.exists()) {
-                  // Document exists, use update to increment
-                  await updateDoc(balanceRef, {
-                    balance: increment(saleAmount),
-                    updatedAt: serverTimestamp()
-                  });
-                } else {
-                  // Document doesn't exist, create it with initial balance
-                  await setDoc(balanceRef, {
-                    clanId: activeClan.id,
-                    balance: saleAmount,
-                    updatedAt: serverTimestamp()
-                  });
-                }
+                // Clan balance update - PostgreSQL implementation pending
+                showNotification('Clan balance update functionality coming soon', 'info');
               } catch (balanceError) {
                 console.error("Bakiye güncelleme hatası:", balanceError);
                 showNotification("Bakiye güncellenirken hata oluştu: " + balanceError.message, "error");
