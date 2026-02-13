@@ -1,4 +1,3 @@
-// Firebase importu TAMAMEN kaldırıldı
 const API_BASE = 'https://riseofking2.onrender.com/api';
 
 // Yeni sistem: LocalStorage'daki JWT token'ı kullan
@@ -8,7 +7,6 @@ const getAuthHeaders = async () => {
   };
   
   try {
-    // Yeni sistemde token localStorage'da saklanıyor
     const token = localStorage.getItem('token'); 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -20,25 +18,65 @@ const getAuthHeaders = async () => {
   return headers;
 };
 
-// Kullanıcı Servisi
-export const userService = {
-  getProfile: async (userId) => { // Artık uid yerine userId veya genel id kullanabilirsin
+// --- Eşya Servisi (Hata Veren Kısım Buydu) ---
+export const itemService = {
+  getAllItems: async () => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_BASE}/users/profile/${userId}`, {
-        headers
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.message || `Sunucu hatası: ${response.status}`);
-      }
-      return data;
+      const response = await fetch(`${API_BASE}/items`, { headers });
+      if (!response.ok) throw new Error('Eşyalar alınamadı');
+      return await response.json();
     } catch (error) {
-      console.error('Profil getirme hatası:', error);
+      console.error('Item listesi hatası:', error);
       throw error;
     }
   },
+  getItemById: async (id) => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE}/items/${id}`, { headers });
+      return await response.json();
+    } catch (error) {
+      throw error;
+    }
+  }
+};
 
+// --- Klan Servisi ---
+export const clanService = {
+  getClanDetails: async (clanId) => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE}/clans/${clanId}`, { headers });
+      return await response.json();
+    } catch (error) {
+      throw error;
+    }
+  },
+  getClanMembers: async (clanId) => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE}/clans/${clanId}/members`, { headers });
+      return await response.json();
+    } catch (error) {
+      throw error;
+    }
+  }
+};
+
+// --- Kullanıcı Servisi ---
+export const userService = {
+  getProfile: async (userId) => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE}/users/profile/${userId}`, { headers });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.message || 'Profil hatası');
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  },
   updateProfile: async (userId, profileData) => {
     try {
       const headers = await getAuthHeaders();
@@ -47,32 +85,21 @@ export const userService = {
         headers,
         body: JSON.stringify(profileData)
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.message || 'Güncelleme başarısız');
-      }
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('Profil güncelleme hatası:', error);
       throw error;
     }
   }
 };
 
-// Mesaj Servisi
+// --- Mesaj Servisi ---
 export const messageService = {
   getAllMessages: async (userId) => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_BASE}/messages/user/${userId}`, {
-        headers
-      });
-      if (!response.ok) {
-        throw new Error(`Mesajlar alınamadı: ${response.status}`);
-      }
+      const response = await fetch(`${API_BASE}/messages/user/${userId}`, { headers });
       return await response.json();
     } catch (error) {
-      console.error('Messages getirme hatası:', error);
       throw error;
     }
   }
