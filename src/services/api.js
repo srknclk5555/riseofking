@@ -1,5 +1,5 @@
 // Frontend için API servis örneği
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = 'https://riseofking2.onrender.com/api';
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('authToken');
