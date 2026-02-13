@@ -1,17 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { initializeApp } from "firebase/app";
-import {
-  getFirestore, doc, collection, onSnapshot,
-  setDoc, updateDoc, deleteDoc, getDoc, getDocs,
-  serverTimestamp, addDoc, query, where, arrayUnion, arrayRemove, orderBy, increment, limit
-} from "firebase/firestore";
-import {
-  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  onAuthStateChanged, signOut
-} from "firebase/auth";
-import {
-  getDatabase, ref, onValue, set, onDisconnect, serverTimestamp as rtdbServerTimestamp
-} from "firebase/database";
+// Firebase imports removed - using PostgreSQL authentication
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
@@ -42,38 +30,17 @@ import ClanPage from './pages/ClanPage';
 
 // PostgreSQL API Servisleri
 import { itemService, locationService, mobService, farmService, notificationService, gatheringService, eventService, messageService, userService } from './services/api';
+import * as authService from './services/authService';
 import socketService from './services/socketService';
 
-// --- FIREBASE AYARLARI ---
-const firebaseConfig = {
-  apiKey: "AIzaSyAzlbU1q38L9tktaKXPbE79_OrC67Pg-_g",
-  authDomain: "craft-71422.firebaseapp.com",
-  databaseURL: "https://craft-71422-default-rtdb.firebaseio.com",
-  projectId: "craft-71422",
-  storageBucket: "craft-71422.firebasestorage.app",
-  messagingSenderId: "743669193125",
-  appId: "1:743669193125:web:61ee2f04a56a5ffc24704c",
-  measurementId: "G-WC1R5MEXD5"
-};
-
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-export const auth = getAuth(app);
-const rtdb = getDatabase(app);
-
-// Global auth objesini window'a ekle (ClanPage.js için)
-if (typeof window !== 'undefined') {
-  window.firebaseAuth = auth;
-}
+// --- FIREBASE CONNECTIONS REMOVED ---
+// All data now handled through PostgreSQL backend
 
 // --- APP ID ---
 const staticAppId = "rise_online_tracker_app";
 const appId = staticAppId;
 
-// Yardımcılar
-export const getUserDocRef = (uid) => doc(db, 'artifacts', appId, 'users', uid);
-export const getPublicCollectionRef = (collectionName) => collection(db, 'artifacts', appId, 'public', 'data', collectionName);
-export const getPublicDocRef = (collectionName, docId) => doc(db, 'artifacts', appId, 'public', 'data', collectionName, docId);
+// Firebase helpers removed - using PostgreSQL API
 
 // Güvenlik kontrolleri
 export const validateFarmAccess = (farm, userId) => {
@@ -732,7 +699,7 @@ export default function App() {
             )}
 
             <div className="w-px h-6 bg-gray-700"></div>
-            <button onClick={() => signOut(auth)} className="flex items-center gap-2 text-red-400 hover:text-red-300"><LogOut size={18} /><span className="hidden md:inline text-sm">Çıkış</span></button>
+            <button onClick={() => { authService.logout(); socketService.disconnect(); window.location.reload(); }} className="flex items-center gap-2 text-red-400 hover:text-red-300"><LogOut size={18} /><span className="hidden md:inline text-sm">Çıkış</span></button>
           </div>
         </header>
 
@@ -889,36 +856,34 @@ const AuthScreen = () => {
     setError('');
     setLoading(true);
     if (username.length < 3 || password.length < 6) { setError('Geçersiz bilgiler.'); setLoading(false); return; }
-
-    const email = generateEmail(username);
+    
     try {
       if (isRegister) {
-        // TEMP: Skip username check to isolate permission error
-        console.log('[DEBUG] Skipping username uniqueness check for debugging');
-        // const usernameDocRef = getPublicDocRef('usernames', username.toLowerCase());
-        // const usernameSnap = await getDoc(usernameDocRef);
-        // if (usernameSnap.exists()) { setError('Kullanıcı adı dolu.'); setLoading(false); return; }
-
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const uid = cred.user.uid;
-        console.log('[DEBUG] Firebase auth created successfully, uid:', uid);
-
-        // Test: Write user doc only
-        const newUserData = {
-          ...defaultUserData(uid, username.toLowerCase()),
-          profile: { username: username.toLowerCase(), avatar: null, mainCharacter: "" },
-          settings: { theme: 'dark', notifications: true },
-          otherPlayers: {},
-          clan: null
-        };
-        console.log('[DEBUG] Writing user doc to:', getUserDocRef(uid).path);
-        await setDoc(getUserDocRef(uid), newUserData, { merge: true });
-        console.log('[SUCCESS] User doc written successfully');
-        return;
+        // Register user with new auth system
+        await authService.register({
+          email: generateEmail(username),
+          username: username,
+          password: password,
+          mainCharacter: username
+        });
+        console.log('[DEBUG] User registered successfully');
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        // Login user with new auth system
+        await authService.login({
+          email: generateEmail(username),
+          password: password
+        });
+        console.log('[DEBUG] User logged in successfully');
       }
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
+      
+      // Refresh the page to load the authenticated state
+      window.location.reload();
+      
+    } catch (err) { 
+      setError(err.message); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   return (

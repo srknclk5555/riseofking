@@ -1,5 +1,5 @@
 // Production Backend URL
-const API_BASE = 'https://riseofking2.onrender.com/api';
+const API_BASE = process.env.REACT_APP_API_URL || 'https://riseofking2.onrender.com/api';
 
 // Yeni JWT Sistemine Uygun Header Oluşturucu
 const getAuthHeaders = () => {

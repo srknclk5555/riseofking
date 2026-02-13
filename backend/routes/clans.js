@@ -22,7 +22,8 @@ console.log('[DEBUG] Clans router loaded');
 // Mevcut rotalar...
 router.get('/', (req, res, next) => { console.log('[DEBUG] GET / clans'); next(); }, getAllClans);
 router.get('/user/:userId', getUserClans);
-router.post('/create', authMiddleware, createClan);
+router.post('/', authMiddleware, createClan);
+router.post('/create', authMiddleware, createClan); // For backward compatibility
 router.get('/:id', getClanById);
 router.get('/:clanId/members', (req, res, next) => { console.log('[DEBUG] GET /:clanId/members'); next(); }, getClanMembers);
 router.post('/:clanId/members', authMiddleware, (req, res, next) => { console.log('[DEBUG] POST /:clanId/members'); next(); }, addMembersToClan);
