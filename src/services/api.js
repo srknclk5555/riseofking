@@ -18,7 +18,29 @@ const getAuthHeaders = async () => {
   return headers;
 };
 
-// --- Eşya Servisi (Hata Veren Kısım Buydu) ---
+// --- Bildirim Servisi (Netlify'ın istediği parça) ---
+export const notificationService = {
+  getNotifications: async (userId) => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE}/notifications/user/${userId}`, { headers });
+      return await response.json();
+    } catch (error) {
+      console.error('Bildirim hatası:', error);
+      return [];
+    }
+  },
+  markAsRead: async (notificationId) => {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`${API_BASE}/notifications/${notificationId}/read`, { method: 'PUT', headers });
+    } catch (error) {
+      console.error('Bildirim okundu hatası:', error);
+    }
+  }
+};
+
+// --- Eşya Servisi ---
 export const itemService = {
   getAllItems: async () => {
     try {
@@ -28,15 +50,6 @@ export const itemService = {
       return await response.json();
     } catch (error) {
       console.error('Item listesi hatası:', error);
-      throw error;
-    }
-  },
-  getItemById: async (id) => {
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`${API_BASE}/items/${id}`, { headers });
-      return await response.json();
-    } catch (error) {
       throw error;
     }
   }
@@ -52,14 +65,19 @@ export const clanService = {
     } catch (error) {
       throw error;
     }
-  },
-  getClanMembers: async (clanId) => {
+  }
+};
+
+// --- Arkadaşlık Servisi ---
+export const friendshipService = {
+  getFriends: async (userId) => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_BASE}/clans/${clanId}/members`, { headers });
+      const response = await fetch(`${API_BASE}/friendships/${userId}`, { headers });
       return await response.json();
     } catch (error) {
-      throw error;
+      console.error('Arkadaş listesi hatası:', error);
+      return [];
     }
   }
 };
@@ -71,7 +89,6 @@ export const userService = {
       const headers = await getAuthHeaders();
       const response = await fetch(`${API_BASE}/users/profile/${userId}`, { headers });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.message || 'Profil hatası');
       return data;
     } catch (error) {
       throw error;
