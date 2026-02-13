@@ -1,18 +1,16 @@
-import { auth } from './firebase-config'; // Firebase config dosyanızın yolu
-
+// Firebase importu TAMAMEN kaldırıldı
 const API_BASE = 'https://riseofking2.onrender.com/api';
 
-// Firebase'den token al
+// Yeni sistem: LocalStorage'daki JWT token'ı kullan
 const getAuthHeaders = async () => {
   const headers = {
     'Content-Type': 'application/json',
   };
   
   try {
-    const user = auth.currentUser;
-    if (user) {
-      // Firebase'den fresh token al
-      const token = await user.getIdToken(true); // true = force refresh
+    // Yeni sistemde token localStorage'da saklanıyor
+    const token = localStorage.getItem('token'); 
+    if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
   } catch (error) {
@@ -22,18 +20,17 @@ const getAuthHeaders = async () => {
   return headers;
 };
 
-// Örnek: userService.getProfile güncelleme
+// Kullanıcı Servisi
 export const userService = {
-  getProfile: async (uid) => {
+  getProfile: async (userId) => { // Artık uid yerine userId veya genel id kullanabilirsin
     try {
-      const headers = await getAuthHeaders(); // ASYNC olarak çağır
-      const response = await fetch(`${API_BASE}/users/profile/${uid}`, {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE}/users/profile/${userId}`, {
         headers
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const msg = data?.error || data?.message || `HTTP error! status: ${response.status}`;
-        throw new Error(msg);
+        throw new Error(data?.message || `Sunucu hatası: ${response.status}`);
       }
       return data;
     } catch (error) {
@@ -42,18 +39,17 @@ export const userService = {
     }
   },
 
-  updateProfile: async (uid, profileData) => {
+  updateProfile: async (userId, profileData) => {
     try {
-      const headers = await getAuthHeaders(); // ASYNC
-      const response = await fetch(`${API_BASE}/users/profile/${uid}`, {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE}/users/profile/${userId}`, {
         method: 'PUT',
         headers,
         body: JSON.stringify(profileData)
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const msg = data?.error || data?.message || `HTTP error! status: ${response.status}`;
-        throw new Error(msg);
+        throw new Error(data?.message || 'Güncelleme başarısız');
       }
       return data;
     } catch (error) {
@@ -63,23 +59,21 @@ export const userService = {
   }
 };
 
-// messageService için de aynı şekilde
+// Mesaj Servisi
 export const messageService = {
   getAllMessages: async (userId) => {
     try {
-      const headers = await getAuthHeaders(); // ASYNC
+      const headers = await getAuthHeaders();
       const response = await fetch(`${API_BASE}/messages/user/${userId}`, {
         headers
       });
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`Mesajlar alınamadı: ${response.status}`);
       }
       return await response.json();
     } catch (error) {
       console.error('Messages getirme hatası:', error);
       throw error;
     }
-  },
-  
-  // Diğer metodlar da aynı şekilde...
+  }
 };
