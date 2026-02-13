@@ -1,0 +1,58 @@
+import { API_BASE } from './apiConfig';
+
+const clanBossService = {
+    getClanBossRuns: async (clanId) => {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`${API_BASE}/api/clan-boss/runs/clan/${clanId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Boss run\'ları yüklenemedi');
+        }
+        
+        return response.json();
+    },
+    
+    getClanMembers: async (clanId) => {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`${API_BASE}/api/clan-boss/members/${clanId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Clan üyeleri yüklenemedi');
+        }
+        
+        return response.json();
+    },
+    
+    createClanBossRun: async (runData) => {
+        const token = localStorage.getItem('authToken');
+        const response = await fetch(`${API_BASE}/api/clan-boss/runs`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(runData)
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Boss run oluşturulamadı');
+        }
+        
+        return response.json();
+    }
+};
+
+export default clanBossService;

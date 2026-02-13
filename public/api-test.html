@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rise Online Tracker - API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        .container {
+            background-color: #2d2d2d;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result {
+            background-color: #333;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .info { color: #2196F3; }
+    </style>
+</head>
+<body>
+    <h1>🎮 Rise Online Tracker - PostgreSQL API Test</h1>
+    
+    <div class="container">
+        <h2>🔧 API Durumu</h2>
+        <button onclick="testConnection()">API Bağlantısını Test Et</button>
+        <div id="connectionResult" class="result"></div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Items İşlemleri</h2>
+        <button onclick="getAllItems()">Tüm Item'ları Getir</button>
+        <button onclick="addItem()">Yeni Item Ekle</button>
+        <div id="itemsResult" class="result"></div>
+    </div>
+
+    <div class="container">
+        <h2>📊 Veritabanı Durumu</h2>
+        <button onclick="getDbStats()">Veritabanı İstatistikleri</button>
+        <div id="statsResult" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+
+        async function testConnection() {
+            const resultDiv = document.getElementById('connectionResult');
+            resultDiv.innerHTML = '<span class="info">🔍 Bağlantı test ediliyor...</span>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/items`);
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `<span class="success">✅ API bağlantısı başarılı!</span>\n<span class="info">Toplam item sayısı: ${data.length}</span>`;
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Bağlantı hatası: ${error.message}</span>`;
+            }
+        }
+
+        async function getAllItems() {
+            const resultDiv = document.getElementById('itemsResult');
+            resultDiv.innerHTML = '<span class="info">🔄 Itemlar getiriliyor...</span>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/items`);
+                if (response.ok) {
+                    const items = await response.json();
+                    resultDiv.innerHTML = `<span class="success">✅ ${items.length} item bulundu:</span>\n\n${JSON.stringify(items, null, 2)}`;
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Item getirme hatası: ${error.message}</span>`;
+            }
+        }
+
+        async function addItem() {
+            const resultDiv = document.getElementById('itemsResult');
+            resultDiv.innerHTML = '<span class="info">🔄 Yeni item ekleniyor...</span>';
+            
+            const newItem = {
+                name: `Test Item ${Date.now()}`,
+                rarity: "Rare",
+                level: Math.floor(Math.random() * 50) + 1,
+                gear_score: Math.floor(Math.random() * 1000) + 100,
+                class: "All",
+                bonuses: { strength: 10, defense: 5 },
+                resistances: { fire: 5, ice: 3 }
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/items`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(newItem)
+                });
+                
+                if (response.ok) {
+                    const createdItem = await response.json();
+                    resultDiv.innerHTML = `<span class="success">✅ Yeni item oluşturuldu:</span>\n\n${JSON.stringify(createdItem, null, 2)}`;
+                    // Otomatik olarak item listesini yenile
+                    setTimeout(() => getAllItems(), 1000);
+                } else {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Item ekleme hatası: ${error.message}</span>`;
+            }
+        }
+
+        async function getDbStats() {
+            const resultDiv = document.getElementById('statsResult');
+            resultDiv.innerHTML = '<span class="info">📊 İstatistikler getiriliyor...</span>';
+            
+            try {
+                // Önce items sayısını al
+                const itemsResponse = await fetch(`${API_BASE}/items`);
+                let itemsCount = 0;
+                if (itemsResponse.ok) {
+                    const items = await itemsResponse.json();
+                    itemsCount = items.length;
+                }
+                
+                resultDiv.innerHTML = `
+<span class="success">✅ Veritabanı İstatistikleri:</span>
+
+📊 Items Tablosu: ${itemsCount} kayıt
+📍 Veritabanı: rise_online_tracker
+🔗 API Durumu: Aktif
+⏰ Son Güncelleme: ${new Date().toLocaleString('tr-TR')}
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ İstatistik alma hatası: ${error.message}</span>`;
+            }
+        }
+
+        // Sayfa yüklendiğinde otomatik bağlantı testi
+        window.onload = function() {
+            setTimeout(testConnection, 1000);
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+=== REGISTERED USERS in DATABASE ===
+UID | Username (mainCharacter) | Email
+--------------------------------------------------------------------------------
+NQBJ8ELmNPaXkRRq3ZcBhpCUYFG3 | (No Main Character) | 222@rotracker.com
+Q7tyyrflhIUkUxR9gcUOKdkNDLk1 | (No Main Character) | 444@rotracker.com
+go2LuUB80lXKU9DwNKPUNbipNF82 | holse | (No Email)
+LAYAudITwwWjsZoQWz6FtZp8DuI3 | 4tosunn | (No Email)
+5DMENCsdKbQ5DTvv9O7hqrmYwv22 | Honoria | (No Email)
+... (ve diğer 34 kullanıcı) ...
+
+Tam liste için veritabanı sorgusu yapılmıştır.
+Bu dosya referans içindir.
+Eklemek istediğiniz kullanıcının UID'sini kopyalayıp clan üye ekleme kutusuna yapıştırın.
