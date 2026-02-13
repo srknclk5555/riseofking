@@ -251,32 +251,23 @@ export default function App() {
 
   // --- EFFECT 1: AUTHENTICATION ---
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(null);
-      setUserData(null);
-      setFarms([]);
-      setNotifications([]);
-      if (currentUser) {
-        setUser(currentUser);
-        // Get and store ID token for API calls
-        try {
-          const token = await currentUser.getIdToken();
-          localStorage.setItem('authToken', token);
-          socketService.connect(currentUser.uid, token); // Socket bağlan
-          console.log('[DEBUG] User logged in with UID:', currentUser.uid);
-          console.log('[DEBUG] Auth token stored in localStorage');
-        } catch (error) {
-          console.error('[DEBUG] Error getting ID token:', error);
-        }
-      } else {
-        // Clear token on logout
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('userId');
-        socketService.disconnect(); // Socket kopar
-        setLoading(false);
-      }
-    });
-    return () => unsubscribeAuth();
+    // Check for existing JWT token
+    const token = localStorage.getItem('authToken');
+    const user = localStorage.getItem('user');
+    
+    if (token && user) {
+      const userData = JSON.parse(user);
+      setUser(userData);
+      socketService.connect(userData.uid, token); // Socket bağlan
+      console.log('[DEBUG] User logged in with UID:', userData.uid);
+      console.log('[DEBUG] Auth token found in localStorage');
+    } else {
+      // Clear token on logout
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      socketService.disconnect(); // Socket kopar
+      setLoading(false);
+    }
   }, []);
 
   // --- EFFECT 2: TEMEL KULLANICI VERİSİ VE BİLDİRİMLER ---
@@ -323,13 +314,8 @@ export default function App() {
         }
         setLoading(false);
       } else {
-        if (!creatingUserRef.current) {
-          creatingUserRef.current = true;
-          const username = user.email.split('@')[0];
-          try { await setDoc(userDocRef, defaultUserData(uid, username), { merge: true }); }
-          catch (error) { console.error("Belge hatası:", error); setLoading(false); }
-          finally { creatingUserRef.current = false; }
-        }
+        // User data already handled by PostgreSQL backend
+        setLoading(false);
       }
     }, (error) => {
       console.error("User Snapshot Error:", error);
