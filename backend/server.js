@@ -32,6 +32,7 @@ app.use((req, res, next) => {
 });
 
 // Routes
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/items', itemsRouter);
 app.use('/api/events', require('./routes/events'));
 app.use('/api/farms', require('./routes/farms'));
@@ -44,6 +45,11 @@ app.use('/api/clan-boss', require('./routes/clanBossRoutes'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/discord', require('./routes/discord'));
+
+// Test route
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'API is working' });
+});
 
 // Health check route
 app.get('/', (req, res) => {

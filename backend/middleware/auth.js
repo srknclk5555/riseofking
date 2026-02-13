@@ -54,7 +54,7 @@ module.exports = async function authMiddleware(req, res, next) {
       console.log('[AUTH DEBUG] JWT Verified. UserID:', userId);
 
       if (!userId) return res.status(401).json({ error: 'Token does not contain user id' });
-      req.user = { id: String(userId), jwt: true, claims: payload };
+      req.user = { id: payload.id, uid: payload.uid, email: payload.email, username: payload.username, jwt: true, claims: payload };
       return next();
     } catch (e) {
       console.log('[AUTH DEBUG] JWT verify failed:', e.message);
