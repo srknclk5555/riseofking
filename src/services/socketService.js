@@ -1,7 +1,8 @@
 import io from 'socket.io-client';
+import { SOCKET_URL } from './apiConfig';
 
-// Canlıdaki Render URL'in
-const API_URL = 'https://riseofking2.onrender.com'; 
+// Local veya production URL (dynamic)
+const API_URL = SOCKET_URL;
 
 class SocketService {
     constructor() {
@@ -56,7 +57,7 @@ class SocketService {
         if (!this.socket) return;
         console.log(`[SocketService] Flushing ${this.pendingListeners.length} pending listeners...`);
         this.pendingListeners.forEach(({ event, callback }) => {
-            this.socket.off(event); 
+            this.socket.off(event);
             this.socket.on(event, callback);
         });
         this.pendingListeners = [];
@@ -74,7 +75,7 @@ class SocketService {
 
     on(event, callback) {
         if (this.socket) {
-            this.socket.off(event); 
+            this.socket.off(event);
             this.socket.on(event, callback);
             console.log(`[SocketService] Listener added for: ${event}`);
         } else {

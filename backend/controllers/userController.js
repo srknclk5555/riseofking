@@ -10,6 +10,7 @@ async function ensureUsersTable() {
         profile JSONB DEFAULT '{}'::jsonb,
         other_players JSONB DEFAULT '{}'::jsonb,
         username TEXT,
+        password_hash TEXT,
         "mainCharacter" TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -22,6 +23,10 @@ async function ensureUsersTable() {
       WHERE table_name = 'users'
     `);
     const columnNames = columns.rows.map(c => c.column_name);
+
+    if (!columnNames.includes('password_hash')) {
+      await db.query(`ALTER TABLE users ADD COLUMN password_hash TEXT;`);
+    }
 
     if (!columnNames.includes('uid')) {
       await db.query(`ALTER TABLE users ADD COLUMN uid TEXT;`);
