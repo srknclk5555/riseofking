@@ -1046,7 +1046,7 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
         items: items,
         totalRevenue,
         sharePerPerson,
-        updatedAt: serverTimestamp()
+        updatedAt: new Date().toISOString()
       };
 
       // Veri doğrulama
@@ -1127,7 +1127,7 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
         // Üyelere Bildirim Gönder
         members.forEach(member => {
           if (member.uid) {
-            sendNotification(member.uid, "🆕 Yeni Farm Başladı", `${generalInfo.location} - ${generalInfo.mob} slotunda yeni farm kaydı açıldı. (${newFarmNumber})`, docRef.id);
+            sendNotification(member.uid, "🆕 Yeni Farm Başladı", `${generalInfo.location} - ${generalInfo.mob} slotunda yeni farm kaydı açıldı. (${newFarmNumber})`, newFarmNumber);
           }
         });
 
@@ -1497,8 +1497,8 @@ const BossRunModal = ({ isOpen, onClose, activeClan, uid, userData, editData, sh
         drops: sanitizedDrops,
         totalRevenue: Number(totalRevenue) || 0,
         createdBy: String(uid),
-        createdAt: editData?.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp()
+        createdAt: editData?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
       // Backend API call
