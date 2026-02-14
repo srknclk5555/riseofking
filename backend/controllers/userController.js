@@ -1,13 +1,4 @@
-const db = require('../config/database');
-const admin = require('firebase-admin');
-
-// Firebase admin SDK'yı başlat (server.js'de zaten başlatılıyor ama burada da kontrol edelim)
-let firestoreDb;
-try {
-  firestoreDb = admin.firestore();
-} catch (error) {
-  console.log('Firebase not initialized, will use direct connection');
-}
+// Firebase dependency removed as per user request for direct database connection
 
 async function ensureUsersTable() {
   try {
@@ -18,7 +9,9 @@ async function ensureUsersTable() {
         profile JSONB DEFAULT '{}'::jsonb,
         other_players JSONB DEFAULT '{}'::jsonb,
         username TEXT,
-        "mainCharacter" TEXT
+        "mainCharacter" TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -39,6 +32,16 @@ async function ensureUsersTable() {
       try {
         await db.query(`ALTER TABLE users ADD COLUMN "mainCharacter" TEXT;`);
       } catch (e) { }
+    }
+
+    // Fix for 500 error: record "new" has no field "updated_at"
+    if (!columnNames.includes('updated_at')) {
+      console.log('[SCHEMA] Adding updated_at column to users');
+      await db.query(`ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+    }
+    if (!columnNames.includes('created_at')) {
+      console.log('[SCHEMA] Adding created_at column to users');
+      await db.query(`ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
     }
 
     // CRITICAL: Ensure UID has a UNIQUE constraint for ON CONFLICT (uid) to work
@@ -65,56 +68,7 @@ async function ensureUsersTable() {
   }
 }
 
-// Firebase'den kullanıcı verilerini alıp PostgreSQL'i güncelleyen fonksiyon
-async function syncUserFromFirebase(userId) {
-  try {
-    if (!firestoreDb) {
-      console.log('Firebase not available, skipping sync');
-      return;
-    }
-
-    // Firestore'dan kullanıcı verilerini al
-    const userDoc = await firestoreDb.collection('artifacts').doc('rise_online_tracker_app')
-      .collection('users').doc(userId).get();
-
-    if (!userDoc.exists) {
-      console.log(`Kullanıcı ${userId} için Firestore verisi bulunamadı.`);
-      return;
-    }
-
-    const firestoreData = userDoc.data();
-    const firestoreOtherPlayers = firestoreData.otherPlayers || {};
-
-    // Firestore'daki otherPlayers yapısını PostgreSQL formatına dönüştür
-    const postgresqlOtherPlayers = {};
-    let playerIndex = 0;
-
-    for (const [firestoreKey, firestoreFriend] of Object.entries(firestoreOtherPlayers)) {
-      if (firestoreFriend && firestoreFriend.uid) {
-        const playerKey = `player_${playerIndex}`;
-
-        postgresqlOtherPlayers[playerKey] = {
-          uid: firestoreFriend.uid,
-          nickname: firestoreFriend.nickname || firestoreFriend.realUsername || 'Bilinmeyen',
-          username: firestoreFriend.realUsername || 'Bilinmeyen'
-        };
-
-        playerIndex++;
-      }
-    }
-
-    // PostgreSQL'i güncelle
-    await db.query(
-      'UPDATE users SET other_players = $1 WHERE uid = $2',
-      [postgresqlOtherPlayers, userId]
-    );
-
-    console.log(`Kullanıcı ${userId} için other_players senkronize edildi. Toplam ${playerIndex} arkadaş.`);
-
-  } catch (error) {
-    console.error(`Kullanıcı ${userId} senkronizasyon hatası:`, error.message);
-  }
-}
+// syncUserFromFirebase function removed (Firestore discontinued)
 
 // Kullanıcı profili getirme
 const getProfile = async (req, res) => {
@@ -253,8 +207,8 @@ const addFriend = async (req, res) => {
     // Sadece Firestore'a ekle (frontend zaten yapar)
     // Ancak PostgreSQL'i de güncelleyelim
 
-    // Firestore'dan kullanıcı verilerini al ve PostgreSQL'i güncelle
-    await syncUserFromFirebase(uid);
+    // Firestore sync removed as per user request
+    // await syncUserFromFirebase(uid);
 
     res.json({ key, nickname, linked: false });
   } catch (error) {
@@ -272,8 +226,8 @@ const deleteFriend = async (req, res) => {
     // Sadece PostgreSQL'den sil (Firestore frontend tarafından zaten silinir)
     await db.query(`UPDATE users SET other_players = other_players - $2 WHERE uid = $1`, [uid, friendKey]);
 
-    // Firestore'dan veriyi al ve PostgreSQL'i güncelle
-    await syncUserFromFirebase(uid);
+    // Firestore sync removed as per user request
+    // await syncUserFromFirebase(uid);
 
     res.json({ message: 'Arkadaş silindi' });
   } catch (error) {
@@ -310,8 +264,8 @@ const linkFriend = async (req, res) => {
 
     await db.query(query, [uid, friendKey, targetUid, targetNickname]);
 
-    // Firestore'dan veriyi al ve PostgreSQL'i güncelle
-    await syncUserFromFirebase(uid);
+    // Firestore sync removed as per user request
+    // await syncUserFromFirebase(uid);
 
     res.json({ message: 'Arkadaş bağlandı' });
   } catch (error) {
@@ -373,40 +327,15 @@ const findUserByUsername = async (req, res) => {
       return res.json({ success: true, user });
     }
 
-    // 5. Fallback: Firestore'da profile.username üzerinden ara
+    // Firestore fallback removed as per user request
+    /*
     console.log(`[DEBUG_USER_SEARCH] NOT in PG. Trying Firestore fallback for username: "${cleanUsername}"`);
 
     if (admin.apps && admin.apps.length > 0) {
       const dbFs = admin.firestore();
-      const usersRef = dbFs.collection('artifacts').doc('rise_online_tracker_app').collection('users');
-
-      let q = await usersRef.where('profile.username', '==', cleanUsername).limit(1).get();
-
-      if (!q.empty) {
-        const userDoc = q.docs[0];
-        const data = userDoc.data();
-        const foundUser = {
-          uid: userDoc.id,
-          username: data.profile?.username || cleanUsername
-        };
-        console.log(`[DEBUG_USER_SEARCH] Found in Firestore (username): ${foundUser.uid}`);
-        return res.json({ success: true, user: foundUser });
-      }
-
-      // 6. Fallback: Firestore'da profile.mainCharacter üzerinden ara
-      q = await usersRef.where('profile.mainCharacter', '==', cleanUsername).limit(1).get();
-
-      if (!q.empty) {
-        const userDoc = q.docs[0];
-        const data = userDoc.data();
-        const foundUser = {
-          uid: userDoc.id,
-          username: data.profile?.mainCharacter || cleanUsername
-        };
-        console.log(`[DEBUG_USER_SEARCH] Found in Firestore (mainCharacter): ${foundUser.uid}`);
-        return res.json({ success: true, user: foundUser });
-      }
+      ...
     }
+    */
 
     res.status(404).json({ success: false, error: 'Kullanıcı bulunamadı' });
   } catch (error) {
