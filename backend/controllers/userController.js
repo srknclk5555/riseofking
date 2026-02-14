@@ -1,3 +1,4 @@
+const db = require('../config/database');
 // Firebase dependency removed as per user request for direct database connection
 
 async function ensureUsersTable() {
