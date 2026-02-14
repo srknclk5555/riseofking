@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { userService } from '../services/api';
-import { getFirestore, doc, updateDoc, deleteField } from 'firebase/firestore';
 import DiscordSettings from '../components/DiscordSettings';
 import { Plus, Trash2, AlertCircle, Save, LinkIcon, Check, Shield } from 'lucide-react';
 
@@ -34,12 +33,14 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
       // PostgreSQL'e gönder
       await userService.updateProfile(uid, { mainCharacter });
 
-      // Firestore'a da yaz (sync)
+      // Firestore sync removed - using strict PostgreSQL
+      /*
       const db = getFirestore();
       const userRef = doc(db, 'artifacts', 'rise_online_tracker_app', 'users', uid);
       await updateDoc(userRef, {
         'profile.mainCharacter': mainCharacter
       });
+      */
 
       showNotification('Profil güncellendi!');
     } catch (error) {
@@ -61,17 +62,8 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
       const nickname = friendNick.trim();
       const key = Date.now().toString();
 
-      // Sadece Firestore: authoritative nickname list
-      const db = getFirestore();
-      const appId = 'rise_online_tracker_app';
-      const userDocRef = doc(db, 'artifacts', appId, 'users', uid);
-      await updateDoc(userDocRef, {
-        [`otherPlayers.${key}`]: {
-          nickname,
-          linked: false,
-          uid: null,
-        }
-      });
+      // PostgreSQL API kullanımı
+      await userService.addFriend(uid, { nickname });
 
       setFriendNick("");
       showNotification("Arkadaş eklendi!");
@@ -90,11 +82,7 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
 
   const deleteFriend = async (key) => {
     try {
-      const db = getFirestore();
-      const userRef = doc(db, 'artifacts', 'rise_online_tracker_app', 'users', uid);
-      await updateDoc(userRef, {
-        [`otherPlayers.${key}`]: deleteField()
-      });
+      await userService.deleteFriend(uid, key);
 
       showNotification("Arkadaş silindi!");
 
@@ -126,7 +114,10 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
 
       const targetUid = result.user.uid;
 
-      // 2. Firestore'u güncelle (UID, realUsername ve Linked durumu)
+      // 2. PostgreSQL üzerinden linkle
+      await userService.linkFriend(uid, friendKey, targetUid, result.user.username);
+
+      /* Firestore removed
       const db = getFirestore();
       const userRef = doc(db, 'artifacts', 'rise_online_tracker_app', 'users', uid);
       await updateDoc(userRef, {
@@ -134,6 +125,7 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
         [`otherPlayers.${friendKey}.realUsername`]: result.user.username, // Kullanıcı adını da ekle
         [`otherPlayers.${friendKey}.linked`]: true,
       });
+      */
 
       setLinkInputs(prev => ({ ...prev, [friendKey]: "" }));
       showNotification("Kullanıcı bağlandı!");

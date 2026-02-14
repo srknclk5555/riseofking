@@ -33,8 +33,7 @@ import { itemService, locationService, mobService, farmService, notificationServ
 import * as authService from './services/authService';
 import socketService from './services/socketService';
 
-// --- FIREBASE CONNECTIONS REMOVED ---
-// All data now handled through PostgreSQL backend
+import clanBossService from './services/clanBossService';
 
 // --- APP ID ---
 const staticAppId = "rise_online_tracker_app";
@@ -254,7 +253,7 @@ export default function App() {
     // Check for existing JWT token
     const token = localStorage.getItem('authToken');
     const user = localStorage.getItem('user');
-    
+
     if (token && user) {
       const userData = JSON.parse(user);
       setUser(userData);
@@ -290,7 +289,7 @@ export default function App() {
         setLoading(false);
       }
     };
-    
+
     fetchUserData();
 
     // PostgreSQL'den kullanıcı bildirimlerini çek
@@ -320,7 +319,7 @@ export default function App() {
 
     // Cleanup function
     return () => {
-      unsubUser();
+      // unsubUser(); // Removed
     };
   }, [user]);
 
@@ -389,13 +388,9 @@ export default function App() {
     const uid = user.uid;
 
     try {
-      // Kullanıcı verisini yeniden çek
-      const userDocRef = getUserDocRef(uid);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const freshUserData = userDoc.data();
-        setUserData(freshUserData);
-      }
+      // Kullanıcı verisini yeniden çek (PostgreSQL)
+      const freshUserData = await userService.getProfile(uid);
+      setUserData(freshUserData);
     } catch (error) {
       console.error('Arkadaş listesi çekilirken hata oluştu:', error);
     }
@@ -483,33 +478,8 @@ export default function App() {
 
 
 
-  // --- EFFECT 3: RTDB ONLINE TAKİBİ ---
-  useEffect(() => {
-    if (!user || !user.uid) return;
-    const uid = user.uid;
-    const userStatusDatabaseRef = ref(rtdb, 'status/' + uid);
-    const isOnlineForDatabase = { state: 'online', last_changed: rtdbServerTimestamp() };
-    const isOfflineForDatabase = { state: 'offline', last_changed: rtdbServerTimestamp() };
-    const statusRef = ref(rtdb, 'status');
-
-    const unsubscribeStatus = onValue(statusRef, (snapshot) => {
-      const statuses = snapshot.val();
-      const currentOnlineUsers = {};
-      for (const userId in statuses) {
-        if (statuses[userId] && statuses[userId].state === 'online') currentOnlineUsers[userId] = true;
-      }
-      setOnlineUsers(currentOnlineUsers);
-    });
-
-    const connectedRef = ref(rtdb, '.info/connected');
-    const unsubscribeConnected = onValue(connectedRef, (snapshot) => {
-      if (snapshot.val() === true) {
-        onDisconnect(userStatusDatabaseRef).set(isOfflineForDatabase);
-        set(userStatusDatabaseRef, isOnlineForDatabase);
-      }
-    });
-    return () => { unsubscribeStatus(); unsubscribeConnected(); };
-  }, [user]);
+  // --- EFFECT 3: RTDB ONLINE TAKİBİ (REMOVED) ---
+  // Online status is now handled by the backend/socket service if implemented.
 
   useEffect(() => {
     let interval;
@@ -810,7 +780,7 @@ const AuthScreen = () => {
     setError('');
     setLoading(true);
     if (username.length < 3 || password.length < 6) { setError('Geçersiz bilgiler.'); setLoading(false); return; }
-    
+
     try {
       if (isRegister) {
         // Register user with new auth system
@@ -829,14 +799,14 @@ const AuthScreen = () => {
         });
         console.log('[DEBUG] User logged in successfully');
       }
-      
+
       // Refresh the page to load the authenticated state
       window.location.reload();
-      
-    } catch (err) { 
-      setError(err.message); 
-    } finally { 
-      setLoading(false); 
+
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1399,10 +1369,10 @@ const BossRunModal = ({ isOpen, onClose, activeClan, uid, userData, editData, sh
   // Update current user's nickname when userData changes (in case user updates their mainCharacter)
   useEffect(() => {
     if (isOpen && userData?.profile?.mainCharacter) {
-      setParticipants(prev => 
-        prev.map(p => 
-          p.uid === uid 
-            ? { ...p, nickname: userData.profile.mainCharacter } 
+      setParticipants(prev =>
+        prev.map(p =>
+          p.uid === uid
+            ? { ...p, nickname: userData.profile.mainCharacter }
             : p
         )
       );
@@ -1421,7 +1391,7 @@ const BossRunModal = ({ isOpen, onClose, activeClan, uid, userData, editData, sh
           }
           return p;
         });
-        
+
         return updated ? newParticipants : prev;
       });
     }
@@ -1432,9 +1402,9 @@ const BossRunModal = ({ isOpen, onClose, activeClan, uid, userData, editData, sh
       if (prev.some(p => p.uid === memberUid)) {
         // If user is already in the list and it's the current user, update their entry to use mainCharacter
         if (memberUid === uid) {
-          return prev.map(p => 
-            p.uid === memberUid 
-              ? { ...p, nickname: userData?.profile?.mainCharacter || p.nickname } 
+          return prev.map(p =>
+            p.uid === memberUid
+              ? { ...p, nickname: userData?.profile?.mainCharacter || p.nickname }
               : p
           );
         }
@@ -1532,143 +1502,14 @@ const BossRunModal = ({ isOpen, onClose, activeClan, uid, userData, editData, sh
         updatedAt: serverTimestamp()
       };
 
-      await setDoc(getPublicDocRef('clan_boss_runs', runId), runData);
-
-      // EĞER KULLANICI LİDER İSE: Bakiyeyi ve kasayı yönet (GÜNCELLENMİŞ MANTIK)
-      if (isOwner) {
-        for (const drop of drops) {
-          const price = parseFloat(drop.soldPrice) || 0;
-          const qty = parseInt(drop.quantity) || 1;
-          const saleAmount = price * qty;
-
-          // --- DURUM 1: İTEM SATILDI (İŞARETLİ) ---
-          if (drop.isSold) {
-            let balanceIncreaseNeeded = false;
-
-            // YENİ KAYIT: Henüz bankaya girmedi, direkt satıldı -> Para ekle
-            if (!editData) {
-              balanceIncreaseNeeded = true;
-            }
-            // EDİT MODU: Bankada hala var mı diye bak (Tutarsızlık Kontrolü)
-            else {
-              // Clan bank operations - PostgreSQL implementation pending
-              balanceIncreaseNeeded = true;
-            }
-
-            if (balanceIncreaseNeeded && saleAmount > 0) {
-              console.log("Bakiye Güncelleniyor:", saleAmount);
-              try {
-                // Clan balance update - PostgreSQL implementation pending
-                showNotification('Clan balance update functionality coming soon', 'info');
-              } catch (balanceError) {
-                console.error("Bakiye güncelleme hatası:", balanceError);
-                showNotification("Bakiye güncellenirken hata oluştu: " + balanceError.message, "error");
-              }
-
-              try {
-                await addDoc(getPublicCollectionRef('clan_bank_transactions'), {
-                  clanId: activeClan.id,
-                  type: 'item_sold',
-                  description: `${bossName} drobu satıldı: ${drop.itemName} (x${qty})`,
-                  amount: saleAmount,
-                  performedBy: uid,
-                  timestamp: serverTimestamp()
-                });
-              } catch (transactionError) {
-                console.error("İşlem geçmişi ekleme hatası:", transactionError);
-              }
-            }
-          }
-
-          // --- DURUM 2: İTEM SATILMADI (KASAYA GİRMELİ) ---
-          else {
-            let existsInBank = false;
-            // Edit modundaysak bankada var mı diye bak
-            if (editData) {
-              const bankQuery = query(getPublicCollectionRef('clan_bank_items'), where('clanId', '==', activeClan.id));
-              const bankSnap = await getDocs(bankQuery);
-              existsInBank = bankSnap.docs.some(d => {
-                const data = d.data();
-                return (data.sourceDetails?.bossRunId === runId && data.itemName.trim() === drop.itemName.trim()) ||
-                  (data.itemName.trim() === drop.itemName.trim() && data.sourceDetails?.bossName === bossName.trim());
-              });
-            }
-
-            // Bankada yoksa ekle (Yeni kayıt veya yanlışlıkla silinmiş)
-            if (!existsInBank) {
-              // Permission check - only clan leader can add items to the bank
-              if (!isOwner) {
-                console.error("Sadece klan lideri bankaya item ekleyebilir");
-                showNotification("Sadece klan lideri bankaya item ekleyebilir.", "error");
-                continue; // Skip this iteration
-              }
-
-              const bankItemId = generateId();
-              let targetPage = 1; let targetSlot = 0;
-
-              // Calculate slot position considering all existing items in the database
-              // to ensure proper slot allocation when multiple items are added
-              try {
-                const bankQuery = query(
-                  getPublicCollectionRef('clan_bank_items'),
-                  where('clanId', '==', activeClan.id)
-                );
-                const bankSnap = await getDocs(bankQuery);
-                const allBankItems = bankSnap.docs.map(doc => doc.data());
-
-                if (allBankItems.length > 0) {
-                  const sortedItems = allBankItems.sort((a, b) => (a.page - b.page) || (a.slotIndex - b.slotIndex));
-                  const lastItem = sortedItems[sortedItems.length - 1];
-                  targetPage = lastItem.page || 1;
-                  targetSlot = (lastItem.slotIndex || 0) + 1;
-                  if (targetSlot >= 40) { targetSlot = 0; targetPage++; }
-                }
-              } catch (error) {
-                // If there's an error getting the bank items, fall back to the original logic
-                if (clanBankItems && clanBankItems.length > 0) {
-                  const sortedItems = [...clanBankItems].sort((a, b) => (a.page - b.page) || (a.slotIndex - b.slotIndex));
-                  const lastItem = sortedItems[sortedItems.length - 1];
-                  targetPage = lastItem.page || 1;
-                  targetSlot = (lastItem.slotIndex || 0) + 1;
-                  if (targetSlot >= 40) { targetSlot = 0; targetPage++; }
-                }
-              }
-
-              try {
-                await setDoc(getPublicDocRef('clan_bank_items', bankItemId), {
-                  id: bankItemId,
-                  clanId: activeClan.id,
-                  itemName: drop.itemName.trim(),
-                  quantity: qty,
-                  page: targetPage,
-                  slotIndex: targetSlot,
-                  source: 'boss_drop',
-                  sourceDetails: { bossRunId: runId, bossName: bossName.trim(), date },
-                  isSold: false,
-                  addedBy: uid,
-                  addedAt: serverTimestamp()
-                });
-
-                await addDoc(getPublicCollectionRef('clan_bank_transactions'), {
-                  clanId: activeClan.id,
-                  type: 'item_added',
-                  description: `${bossName} drobu: ${drop.itemName} (x${qty})`,
-                  itemName: drop.itemName,
-                  quantity: qty,
-                  performedBy: uid,
-                  relatedBossRunId: runId,
-                  timestamp: serverTimestamp()
-                });
-              } catch (addItemError) {
-                console.error("Bankaya item ekleme hatası:", addItemError);
-                showNotification("Bankaya item eklenirken hata oluştu: " + addItemError.message, "error");
-              }
-            }
-          }
-        }
+      // Backend API call
+      if (editData) {
+        await clanBossService.updateClanBossRun(editData.id, runData);
+      } else {
+        await clanBossService.createClanBossRun(runData);
       }
 
-      showNotification(editData ? "Boss kaydı güncellendi." : "Boss kaydı oluşturuldu ve droplar kasaya eklendi.");
+      showNotification(editData ? "Boss kaydı güncellendi." : "Boss kaydı oluşturuldu.");
       onClose();
     } catch (e) {
       console.error(e);
@@ -1688,45 +1529,7 @@ const BossRunModal = ({ isOpen, onClose, activeClan, uid, userData, editData, sh
       return;
     }
 
-    try {
-      // Bakiyeyi düşür (Yeni Koleksiyon: clan_balance)
-      const balanceRef = getPublicDocRef('clan_balance', activeClan.id);
-      const balanceDoc = await getDoc(balanceRef);
-
-      if (balanceDoc.exists()) {
-        // Document exists, use update to increment
-        await updateDoc(balanceRef, {
-          balance: increment(-totalToPay),
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        // Document doesn't exist, create it with initial balance
-        await setDoc(balanceRef, {
-          clanId: activeClan.id,
-          balance: -totalToPay,
-          updatedAt: serverTimestamp()
-        });
-      }
-
-      // Herkesi ödendi yap
-      const newParticipants = participants.map(p => ({ ...p, isPaid: true }));
-      setParticipants(newParticipants);
-
-      // Log ekle
-      await addDoc(getPublicCollectionRef('clan_bank_transactions'), {
-        clanId: activeClan.id,
-        type: 'share_paid',
-        description: `${bossName} için toplu ödeme (${unpaidCount} kişi)`,
-        amount: totalToPay,
-        performedBy: uid,
-        timestamp: serverTimestamp()
-      });
-
-      showNotification("Toplu ödeme yapıldı.");
-    } catch (e) {
-      console.error(e);
-      showNotification("Hata: " + e.message, "error");
-    }
+    showNotification("Toplu ödeme özelliği geçici olarak devre dışı (Upgrade pending).", "info");
   };
 
   if (!isOpen) return null;
@@ -1762,22 +1565,23 @@ const BossRunModal = ({ isOpen, onClose, activeClan, uid, userData, editData, sh
               <div className="flex flex-wrap gap-2">
                 {participants.map((p, idx) => {
                   // For the current user (creator), always show mainCharacter from userData; for others, show nickname
-                  const displayName = p.uid === uid 
+                  const displayName = p.uid === uid
                     ? (userData?.profile?.mainCharacter || p.nickname || p.main_character || "Ben")
                     : (p.nickname || p.main_character || p.username || "Kullanıcı");
-                  
+
                   return (
-                  <div key={idx} className="bg-gray-800 border border-gray-700 rounded-lg pl-3 pr-1 py-1 flex items-center gap-2 group">
-                    <span className="text-sm font-bold text-white">{displayName}</span>
-                    <button
-                      onClick={() => handleUpdateDrop(idx, 'isPaid', !p.isPaid)}
-                      className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${p.isPaid ? 'bg-green-600 text-white' : 'bg-red-600/20 text-red-400 border border-red-500/30'}`}
-                    >
-                      {p.isPaid ? 'Ödendi' : 'Ödenmedi'}
-                    </button>
-                    <button onClick={() => handleRemoveParticipant(idx)} className="p-1 text-gray-500 hover:text-red-400 transition"><Trash2 size={12} /></button>
-                  </div>
-                )})}
+                    <div key={idx} className="bg-gray-800 border border-gray-700 rounded-lg pl-3 pr-1 py-1 flex items-center gap-2 group">
+                      <span className="text-sm font-bold text-white">{displayName}</span>
+                      <button
+                        onClick={() => handleUpdateDrop(idx, 'isPaid', !p.isPaid)}
+                        className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${p.isPaid ? 'bg-green-600 text-white' : 'bg-red-600/20 text-red-400 border border-red-500/30'}`}
+                      >
+                        {p.isPaid ? 'Ödendi' : 'Ödenmedi'}
+                      </button>
+                      <button onClick={() => handleRemoveParticipant(idx)} className="p-1 text-gray-500 hover:text-red-400 transition"><Trash2 size={12} /></button>
+                    </div>
+                  )
+                })}
                 <div className="relative group">
                   <div className="flex items-center gap-2 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1 text-gray-500 focus-within:border-red-500 transition cursor-pointer">
                     <Plus size={14} />
@@ -2064,116 +1868,66 @@ const ManualItemAddModal = ({ isOpen, onClose, activeClan, uid, clanBankItems, s
   }, [isOpen]);
 
   const handleSave = async () => {
-    if (!itemName) { showNotification("İtem adı seçiniz.", "error"); return; }
-    if (quantity <= 0) { showNotification("Miktar 0'dan büyük olmalı.", "error"); return; }
-
-    try {
-      const bankItemId = generateId();
-
-      // Boş slot bul
-      let targetPage = 1;
-      let targetSlot = 0;
-
-      if (clanBankItems && clanBankItems.length > 0) {
-        const sortedItems = [...clanBankItems].sort((a, b) => (a.page - b.page) || (a.slotIndex - b.slotIndex));
-        const lastItem = sortedItems[sortedItems.length - 1];
-
-        targetPage = lastItem.page || 1;
-        targetSlot = (lastItem.slotIndex || 0) + 1;
-
-        if (targetSlot >= 40) {
-          targetSlot = 0;
-          targetPage++;
-        }
-      }
-
-      await setDoc(getPublicDocRef('clan_bank_items', bankItemId), {
-        id: bankItemId,
-        clanId: activeClan.id,
-        itemName,
-        quantity: parseInt(quantity),
-        page: targetPage,
-        slotIndex: targetSlot,
-        source: 'manual',
-        isSold: false,
-        addedBy: uid,
-        addedAt: serverTimestamp()
-      });
-
-      // Log
-      await addDoc(getPublicCollectionRef('clan_bank_transactions'), {
-        clanId: activeClan.id,
-        type: 'item_added',
-        description: `Manuel ekleme: ${itemName} (x${quantity})`,
-        itemName,
-        quantity: parseInt(quantity),
-        performedBy: uid,
-        timestamp: serverTimestamp()
-      });
-
-      showNotification("İtem kasaya eklendi.");
-      onClose();
-    } catch (e) {
-      console.error(e);
-      showNotification("Hata: " + e.message, "error");
-    }
+    showNotification("Manuel item ekleme şu an bakımda.", "info");
+    onClose();
   };
+};
 
-  if (!isOpen) return null;
+if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4">
-      <div className="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl flex flex-col overflow-hidden">
-        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900/50">
-          <h4 className="text-white font-bold flex items-center gap-2"><Plus size={18} className="text-green-500" /> Manuel İtem Ekle</h4>
-          <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded"><X size={18} className="text-gray-400" /></button>
+return (
+  <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4">
+    <div className="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl flex flex-col overflow-hidden">
+      <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900/50">
+        <h4 className="text-white font-bold flex items-center gap-2"><Plus size={18} className="text-green-500" /> Manuel İtem Ekle</h4>
+        <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded"><X size={18} className="text-gray-400" /></button>
+      </div>
+
+      <div className="p-6 space-y-4">
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-gray-500 uppercase">İtem Seçin</label>
+          <div className="relative">
+            <input
+              value={itemName}
+              onChange={e => { setItemName(e.target.value); setIsSearching(true); }}
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition"
+              placeholder="İtem ara..."
+            />
+            {isSearching && itemName && (
+              <div className="absolute top-full left-0 w-full bg-gray-800 border border-gray-700 rounded-xl mt-1 shadow-2xl z-30 max-h-40 overflow-y-auto">
+                {availableItems.filter(i => i.name.toLowerCase().includes(itemName.toLowerCase())).map(i => (
+                  <button
+                    key={i.id}
+                    onClick={() => { setItemName(i.name); setIsSearching(false); }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                  >
+                    {i.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="p-6 space-y-4">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase">İtem Seçin</label>
-            <div className="relative">
-              <input
-                value={itemName}
-                onChange={e => { setItemName(e.target.value); setIsSearching(true); }}
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition"
-                placeholder="İtem ara..."
-              />
-              {isSearching && itemName && (
-                <div className="absolute top-full left-0 w-full bg-gray-800 border border-gray-700 rounded-xl mt-1 shadow-2xl z-30 max-h-40 overflow-y-auto">
-                  {availableItems.filter(i => i.name.toLowerCase().includes(itemName.toLowerCase())).map(i => (
-                    <button
-                      key={i.id}
-                      onClick={() => { setItemName(i.name); setIsSearching(false); }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
-                    >
-                      {i.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-gray-500 uppercase">Miktar</label>
+          <input
+            type="number"
+            value={quantity}
+            onChange={e => setQuantity(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none"
+            placeholder="1"
+          />
+        </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-gray-500 uppercase">Miktar</label>
-            <input
-              type="number"
-              value={quantity}
-              onChange={e => setQuantity(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none"
-              placeholder="1"
-            />
-          </div>
-
-          <div className="pt-4 flex gap-2">
-            <button onClick={onClose} className="flex-1 py-3 text-gray-400 font-bold hover:text-white transition">İPTAL</button>
-            <button onClick={handleSave} className="flex-2 bg-green-600 hover:bg-green-700 text-white py-3 px-8 rounded-xl font-bold transition">KASAYA EKLE</button>
-          </div>
+        <div className="pt-4 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-3 text-gray-400 font-bold hover:text-white transition">İPTAL</button>
+          <button onClick={handleSave} className="flex-2 bg-green-600 hover:bg-green-700 text-white py-3 px-8 rounded-xl font-bold transition">KASAYA EKLE</button>
         </div>
       </div>
     </div>
-  );
-}
+  </div>
+);
+  }
 
 
