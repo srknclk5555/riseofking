@@ -10,18 +10,59 @@ try {
 }
 
 async function ensureUsersTable() {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      uid TEXT PRIMARY KEY,
-      profile JSONB DEFAULT '{}'::jsonb,
-      other_players JSONB DEFAULT '{}'::jsonb,
-      username TEXT,
-      "mainCharacter" TEXT
-    );
-  `);
-  // Ensure the standardized columns exist
-  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;`);
-  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS "mainCharacter" TEXT;`);
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        uid TEXT NOT NULL,
+        profile JSONB DEFAULT '{}'::jsonb,
+        other_players JSONB DEFAULT '{}'::jsonb,
+        username TEXT,
+        "mainCharacter" TEXT
+      );
+    `);
+
+    // Check and add columns individually if missing
+    const columns = await db.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name = 'users'
+    `);
+    const columnNames = columns.rows.map(c => c.column_name);
+
+    if (!columnNames.includes('uid')) {
+      await db.query(`ALTER TABLE users ADD COLUMN uid TEXT;`);
+    }
+    if (!columnNames.includes('username')) {
+      await db.query(`ALTER TABLE users ADD COLUMN username TEXT;`);
+    }
+    if (!columnNames.includes('mainCharacter')) {
+      try {
+        await db.query(`ALTER TABLE users ADD COLUMN "mainCharacter" TEXT;`);
+      } catch (e) { }
+    }
+
+    // CRITICAL: Ensure UID has a UNIQUE constraint for ON CONFLICT (uid) to work
+    const constraints = await db.query(`
+      SELECT conname FROM pg_constraint 
+      WHERE conrelid = 'users'::regclass AND conname = 'users_uid_unique'
+    `);
+
+    if (constraints.rows.length === 0) {
+      console.log('[SCHEMA] Adding UNIQUE constraint to users.uid');
+      try {
+        // First delete any duplicates if they exist (unlikely but safe)
+        await db.query(`
+          DELETE FROM users a USING users b 
+          WHERE a.id < b.id AND a.uid = b.uid;
+        `);
+        await db.query(`ALTER TABLE users ADD CONSTRAINT users_uid_unique UNIQUE (uid);`);
+      } catch (e) {
+        console.error('[SCHEMA] Failed to add unique constraint:', e.message);
+      }
+    }
+  } catch (err) {
+    console.error('Error ensuring users table schema:', err.message);
+  }
 }
 
 // Firebase'den kullanıcı verilerini alıp PostgreSQL'i güncelleyen fonksiyon
@@ -121,7 +162,10 @@ const updateProfile = async (req, res) => {
     const { uid } = req.params;
     const actingUid = String(req.user?.uid || '');
 
+    console.log(`[USER DEBUG] Update Profile - Param UID: ${uid}, Acting UID: ${actingUid}`);
+
     if (!actingUid || actingUid !== String(uid)) {
+      console.warn(`[USER BLOCKED] Unauthorized profile update. Token UID: ${actingUid}, Param UID: ${uid}`);
       return res.status(403).json({ error: 'Bu profil için yetkiniz yok' });
     }
 
@@ -132,17 +176,19 @@ const updateProfile = async (req, res) => {
 
     const payload = JSON.stringify(profile);
 
-    // 1. Username: Giriş adı (Arama için kullanılır)
+    // 1. Username: Giriş adı
     const loginUsername = profile?.username?.trim() || null;
 
     // 2. MainCharacter: Oyuncunun kendi belirlediği nick
     const mainCharacter = profile?.mainCharacter?.trim() || profile?.maincharacter?.trim() || null;
 
     const hasEmail = await usersHasEmailColumn();
-    const email = req.user?.claims?.email || req.user?.claims?.user_identities?.email || req.user?.email;
+    const email = req.user?.claims?.email || req.user?.claims?.user_identities?.email || req.user?.email || null;
 
     if (hasEmail && (!email || typeof email !== 'string')) {
-      return res.status(400).json({ error: 'Email bilgisi bulunamadı (token).' });
+      // Only block if the column exists and we have NO email in token
+      console.warn(`[USER DEBUG] Missing email in token but email column exists.`);
+      // return res.status(400).json({ error: 'Email bilgisi bulunamadı (token).' });
     }
 
     const upsertQuery = hasEmail
@@ -173,11 +219,21 @@ const updateProfile = async (req, res) => {
       : [uid, payload, loginUsername, mainCharacter];
 
     const result = await db.query(upsertQuery, params);
+
+    if (!result.rows[0]) {
+      console.warn(`[USER DEBUG] Upsert returned no rows for UID: ${uid}`);
+      return res.status(404).json({ error: 'Kullanıcı güncellenemedi' });
+    }
+
     return res.json(result.rows[0]);
 
   } catch (error) {
-    console.error('Profil güncelleme hatası:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ Profil güncelleme hatası (CRITICAL):', error);
+    res.status(500).json({
+      error: 'Profil güncellenirken bir hata oluştu',
+      details: error.message,
+      hint: 'Check if all columns (uid, email, profile, username, mainCharacter) exist in users table'
+    });
   }
 };
 
