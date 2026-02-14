@@ -1,5 +1,4 @@
-// Authentication Service for PostgreSQL backend
-const API_BASE = process.env.REACT_APP_API_URL || 'https://riseofking2.onrender.com/api';
+import { API_BASE } from './apiConfig';
 
 // Register a new user
 export const register = async (userData) => {
@@ -18,11 +17,11 @@ export const register = async (userData) => {
     }
 
     const data = await response.json();
-    
+
     // Store the token in localStorage
     localStorage.setItem('authToken', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
-    
+
     return data;
   } catch (error) {
     console.error('Registration error:', error);
@@ -47,11 +46,11 @@ export const login = async (credentials) => {
     }
 
     const data = await response.json();
-    
+
     // Store the token in localStorage
     localStorage.setItem('authToken', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
-    
+
     return data;
   } catch (error) {
     console.error('Login error:', error);

@@ -1,10 +1,9 @@
-// Production Backend URL
-const API_BASE = process.env.REACT_APP_API_URL || 'https://riseofking2.onrender.com/api';
+import { API_BASE } from './apiConfig';
 
 // Yeni JWT Sistemine Uygun Header Oluşturucu
 const getAuthHeaders = () => {
   // Yeni sistemde token 'token' anahtarıyla localStorage'da tutuluyor
-  const token = localStorage.getItem('token'); 
+  const token = localStorage.getItem('token');
   const headers = {
     'Content-Type': 'application/json',
   };

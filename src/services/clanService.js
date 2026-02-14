@@ -1,5 +1,4 @@
-// Clan API Servisi
-const API_BASE = process.env.REACT_APP_API_URL || 'https://riseofking2.onrender.com/api';
+import { API_BASE } from './apiConfig';
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('authToken');
@@ -372,22 +371,22 @@ export const clanService = {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
-      
+
       if (!response.ok) {
         // Handle different response types (JSON vs HTML)
         const contentType = response.headers.get('content-type');
         let errorData;
-        
+
         if (contentType && contentType.includes('application/json')) {
           errorData = await response.json();
         } else {
           // If response is not JSON (probably HTML error page), create a generic error
           errorData = { error: `HTTP error! status: ${response.status}` };
         }
-        
+
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
-      
+
       return await response.json();
     } catch (error) {
       console.error('Katilimciyi kayittan cikarma hatasi:', error);
