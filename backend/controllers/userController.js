@@ -256,9 +256,9 @@ const linkFriend = async (req, res) => {
   try {
     await ensureUsersTable();
     const { uid, friendKey } = req.params;
-    const { targetUid, targetNickname } = req.body;
+    const { targetUid, targetUsername } = req.body;
 
-    console.log(`[DEBUG] Linking friend inside PG. uid: ${uid}, friendKey: ${friendKey}, targetUid: ${targetUid}, targetNickname: ${targetNickname}`);
+    console.log(`[DEBUG] Linking friend inside PG. uid: ${uid}, friendKey: ${friendKey}, targetUid: ${targetUid}, targetUsername: ${targetUsername}`);
 
     // 1. Mevcut other_players verisini çek
     const getResult = await db.query('SELECT other_players FROM users WHERE uid = $1', [uid]);
@@ -273,7 +273,7 @@ const linkFriend = async (req, res) => {
       otherPlayers[friendKey] = {
         ...otherPlayers[friendKey],
         uid: targetUid,
-        realUsername: targetNickname, // Frontend bu alanı bekliyor (@username gösterimi için)
+        realUsername: targetUsername, // Frontend bu alanı bekliyor (@username gösterimi için)
         linked: true
       };
 
