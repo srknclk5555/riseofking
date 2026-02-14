@@ -82,7 +82,7 @@ const getProfile = async (req, res) => {
     }
 
     const result = await db.query(
-      `SELECT uid, username, "mainCharacter", profile FROM users WHERE uid = $1 LIMIT 1;`,
+      `SELECT uid, username, "mainCharacter", profile, other_players as "otherPlayers" FROM users WHERE uid = $1 LIMIT 1;`,
       [uid]
     );
 
@@ -192,7 +192,7 @@ const updateProfile = async (req, res) => {
   }
 };
 
-// Arkadaş ekleme
+// Arkadaş ekleme (Direct PostgreSQL JSONB)
 const addFriend = async (req, res) => {
   try {
     await ensureUsersTable();
@@ -203,32 +203,40 @@ const addFriend = async (req, res) => {
       return res.status(400).json({ error: 'Nickname gerekli' });
     }
 
-    const key = Date.now().toString();
+    const friendKey = `player_${Date.now()}`;
+    const friendData = {
+      uid: null,
+      nickname: nickname.trim(),
+      username: nickname.trim(),
+      linked: false
+    };
 
-    // Sadece Firestore'a ekle (frontend zaten yapar)
-    // Ancak PostgreSQL'i de güncelleyelim
+    // PostgreSQL JSONB objesine yeni bir anahtar ekle
+    await db.query(
+      `UPDATE users 
+       SET other_players = COALESCE(other_players, '{}'::jsonb) || $2::jsonb 
+       WHERE uid = $1`,
+      [uid, JSON.stringify({ [friendKey]: friendData })]
+    );
 
-    // Firestore sync removed as per user request
-    // await syncUserFromFirebase(uid);
-
-    res.json({ key, nickname, linked: false });
+    res.json({ key: friendKey, ...friendData });
   } catch (error) {
     console.error('Arkadaş ekleme hatası:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// Arkadaş silme
+// Arkadaş silme (Direct PostgreSQL JSONB)
 const deleteFriend = async (req, res) => {
   try {
     await ensureUsersTable();
     const { uid, friendKey } = req.params;
 
-    // Sadece PostgreSQL'den sil (Firestore frontend tarafından zaten silinir)
-    await db.query(`UPDATE users SET other_players = other_players - $2 WHERE uid = $1`, [uid, friendKey]);
-
-    // Firestore sync removed as per user request
-    // await syncUserFromFirebase(uid);
+    // JSONB anahtarını silmek için - operatörü kullanılır
+    await db.query(
+      `UPDATE users SET other_players = other_players - $2 WHERE uid = $1`,
+      [uid, friendKey]
+    );
 
     res.json({ message: 'Arkadaş silindi' });
   } catch (error) {
@@ -264,9 +272,6 @@ const linkFriend = async (req, res) => {
     `;
 
     await db.query(query, [uid, friendKey, targetUid, targetNickname]);
-
-    // Firestore sync removed as per user request
-    // await syncUserFromFirebase(uid);
 
     res.json({ message: 'Arkadaş bağlandı' });
   } catch (error) {
