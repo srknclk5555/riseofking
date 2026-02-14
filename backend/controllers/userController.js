@@ -82,7 +82,7 @@ const getProfile = async (req, res) => {
     }
 
     const result = await db.query(
-      `SELECT uid, username, "mainCharacter", profile, other_players as "otherPlayers" FROM users WHERE uid = $1 LIMIT 1;`,
+      `SELECT uid, username, "mainCharacter", profile, COALESCE(other_players, '{}'::jsonb) as "otherPlayers" FROM users WHERE uid = $1 LIMIT 1;`,
       [uid]
     );
 
@@ -208,6 +208,7 @@ const addFriend = async (req, res) => {
       uid: null,
       nickname: nickname.trim(),
       username: nickname.trim(),
+      realUsername: null,
       linked: false
     };
 
@@ -245,37 +246,44 @@ const deleteFriend = async (req, res) => {
   }
 };
 
-// Arkadaş bağlama (UID resolve edildikten sonra)
+// Arkadaş bağlama (UID resolve edildikten sonra) - Robust Fetch-Modify-Update Pattern
 const linkFriend = async (req, res) => {
   try {
     await ensureUsersTable();
     const { uid, friendKey } = req.params;
     const { targetUid, targetNickname } = req.body;
 
-    // Use nested jsonb_set to update 'uid', 'nickname', and 'linked' within the nested friend object
-    // without overwriting the entire 'other_players' object.
-    const query = `
-      UPDATE users 
-      SET other_players = jsonb_set(
-        jsonb_set(
-          jsonb_set(
-            COALESCE(other_players, '{}'::jsonb),
-            array[$2, 'uid'],
-            to_jsonb($3::text)
-          ),
-          array[$2, 'nickname'],
-          to_jsonb($4::text)
-        ),
-        array[$2, 'linked'],
-        'true'::jsonb
-      )
-      WHERE uid = $1
-      RETURNING *;
-    `;
+    console.log(`[DEBUG] Linking friend inside PG. uid: ${uid}, friendKey: ${friendKey}, targetUid: ${targetUid}, targetNickname: ${targetNickname}`);
 
-    await db.query(query, [uid, friendKey, targetUid, targetNickname]);
+    // 1. Mevcut other_players verisini çek
+    const getResult = await db.query('SELECT other_players FROM users WHERE uid = $1', [uid]);
+    if (getResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
 
-    res.json({ message: 'Arkadaş bağlandı' });
+    let otherPlayers = getResult.rows[0].other_players || {};
+
+    // 2. Sadece ilgili arkadaşı güncelle, diğerlerine dokunma
+    if (otherPlayers[friendKey]) {
+      otherPlayers[friendKey] = {
+        ...otherPlayers[friendKey],
+        uid: targetUid,
+        realUsername: targetNickname, // Frontend bu alanı bekliyor (@username gösterimi için)
+        linked: true
+      };
+
+      // 3. Veritabanına komple yeni objeyi yaz (En güvenli yol)
+      await db.query(
+        'UPDATE users SET other_players = $1 WHERE uid = $2',
+        [JSON.stringify(otherPlayers), uid]
+      );
+
+      console.log(`[DEBUG] Friend linked successfully in PG for uid: ${uid}`);
+      return res.json({ message: 'Arkadaş bağlandı', friend: otherPlayers[friendKey] });
+    } else {
+      console.warn(`[DEBUG] Friend key NOT FOUND in other_players: ${friendKey}`);
+      return res.status(404).json({ error: 'Düzenlenecek oyuncu bulunamadı. Lütfen sayfayı yenileyip tekrar deneyin.' });
+    }
   } catch (error) {
     console.error('Arkadaş bağlama hatası:', error);
     res.status(500).json({ error: error.message });
