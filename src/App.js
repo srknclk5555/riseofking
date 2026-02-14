@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-// Firebase imports removed - using PostgreSQL authentication
+
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
@@ -39,7 +39,6 @@ import clanBossService from './services/clanBossService';
 const staticAppId = "rise_online_tracker_app";
 const appId = staticAppId;
 
-// Firebase helpers removed - using PostgreSQL API
 
 // Güvenlik kontrolleri
 export const validateFarmAccess = (farm, userId) => {
@@ -1871,63 +1870,62 @@ const ManualItemAddModal = ({ isOpen, onClose, activeClan, uid, clanBankItems, s
     showNotification("Manuel item ekleme şu an bakımda.", "info");
     onClose();
   };
-};
 
-if (!isOpen) return null;
+  if (!isOpen) return null;
 
-return (
-  <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4">
-    <div className="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl flex flex-col overflow-hidden">
-      <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900/50">
-        <h4 className="text-white font-bold flex items-center gap-2"><Plus size={18} className="text-green-500" /> Manuel İtem Ekle</h4>
-        <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded"><X size={18} className="text-gray-400" /></button>
-      </div>
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4">
+      <div className="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl flex flex-col overflow-hidden">
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900/50">
+          <h4 className="text-white font-bold flex items-center gap-2"><Plus size={18} className="text-green-500" /> Manuel İtem Ekle</h4>
+          <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded"><X size={18} className="text-gray-400" /></button>
+        </div>
 
-      <div className="p-6 space-y-4">
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-500 uppercase">İtem Seçin</label>
-          <div className="relative">
-            <input
-              value={itemName}
-              onChange={e => { setItemName(e.target.value); setIsSearching(true); }}
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition"
-              placeholder="İtem ara..."
-            />
-            {isSearching && itemName && (
-              <div className="absolute top-full left-0 w-full bg-gray-800 border border-gray-700 rounded-xl mt-1 shadow-2xl z-30 max-h-40 overflow-y-auto">
-                {availableItems.filter(i => i.name.toLowerCase().includes(itemName.toLowerCase())).map(i => (
-                  <button
-                    key={i.id}
-                    onClick={() => { setItemName(i.name); setIsSearching(false); }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
-                  >
-                    {i.name}
-                  </button>
-                ))}
-              </div>
-            )}
+        <div className="p-6 space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase">İtem Seçin</label>
+            <div className="relative">
+              <input
+                value={itemName}
+                onChange={e => { setItemName(e.target.value); setIsSearching(true); }}
+                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-green-500 transition"
+                placeholder="İtem ara..."
+              />
+              {isSearching && itemName && (
+                <div className="absolute top-full left-0 w-full bg-gray-800 border border-gray-700 rounded-xl mt-1 shadow-2xl z-30 max-h-40 overflow-y-auto">
+                  {availableItems.filter(i => i.name.toLowerCase().includes(itemName.toLowerCase())).map(i => (
+                    <button
+                      key={i.id}
+                      onClick={() => { setItemName(i.name); setIsSearching(false); }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                    >
+                      {i.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-gray-500 uppercase">Miktar</label>
-          <input
-            type="number"
-            value={quantity}
-            onChange={e => setQuantity(e.target.value)}
-            className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none"
-            placeholder="1"
-          />
-        </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase">Miktar</label>
+            <input
+              type="number"
+              value={quantity}
+              onChange={e => setQuantity(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none"
+              placeholder="1"
+            />
+          </div>
 
-        <div className="pt-4 flex gap-2">
-          <button onClick={onClose} className="flex-1 py-3 text-gray-400 font-bold hover:text-white transition">İPTAL</button>
-          <button onClick={handleSave} className="flex-2 bg-green-600 hover:bg-green-700 text-white py-3 px-8 rounded-xl font-bold transition">KASAYA EKLE</button>
+          <div className="pt-4 flex gap-2">
+            <button onClick={onClose} className="flex-1 py-3 text-gray-400 font-bold hover:text-white transition">İPTAL</button>
+            <button onClick={handleSave} className="flex-2 bg-green-600 hover:bg-green-700 text-white py-3 px-8 rounded-xl font-bold transition">KASAYA EKLE</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
-  }
+  );
+}
 
 
