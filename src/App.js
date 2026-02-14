@@ -250,7 +250,7 @@ export default function App() {
   // --- EFFECT 1: AUTHENTICATION ---
   useEffect(() => {
     // Check for existing JWT token
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
 
     if (token && user) {
@@ -261,7 +261,7 @@ export default function App() {
       console.log('[DEBUG] Auth token found in localStorage');
     } else {
       // Clear token on logout
-      localStorage.removeItem('authToken');
+      localStorage.removeItem('token');
       localStorage.removeItem('user');
       socketService.disconnect(); // Socket kopar
       setLoading(false);
