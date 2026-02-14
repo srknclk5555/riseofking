@@ -3,7 +3,7 @@ const pool = require('../config/database');
 // Clan boss run oluşturma
 const createClanBossRun = async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.uid;
         const { clanId, runDate, participants, drops } = req.body;
 
         if (!userId || !clanId || !runDate) {
@@ -113,11 +113,11 @@ const createClanBossRun = async (req, res) => {
 // Clan üyelerini nickname ile birlikte getir
 const getClanMembersWithNicknames = async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.uid;
         const { clanId } = req.params;
 
         console.log('[DEBUG] getClanMembersWithNicknames - Requesting user ID:', userId);
-        
+
         if (!userId || !clanId) return res.status(400).json({ error: 'Eksik bilgi' });
 
         // Kullanıcı klan üyesi mi?
@@ -149,29 +149,29 @@ const getClanMembersWithNicknames = async (req, res) => {
             'SELECT other_players FROM users WHERE uid = $1',
             [userId]
         );
-        
+
         const otherPlayers = userResult.rows[0]?.other_players || {};
         console.log('[DEBUG] getClanMembersWithNicknames - User other_players:', JSON.stringify(otherPlayers, null, 2));
-        
+
         const nicknames = {};
-        
+
         // Nickname bilgilerini çıkar
         for (const [key, friendData] of Object.entries(otherPlayers)) {
             if (friendData && friendData.uid && friendData.nickname) {
                 nicknames[friendData.uid] = friendData.nickname;
             }
         }
-        
+
         console.log('[DEBUG] getClanMembersWithNicknames - Extracted nicknames:', nicknames);
-        
+
         // Her klan üyesi için nickname bilgisini ekle
         const membersWithNicknames = membersResult.rows.map(member => ({
             ...member,
             nickname: nicknames[member.user_id] || member.username
         }));
-        
+
         console.log('[DEBUG] getClanMembersWithNicknames - Final members with nicknames:', membersWithNicknames);
-        
+
         res.status(200).json(membersWithNicknames);
     } catch (error) {
         console.error('❌ Clan üyeleri getirme hatası:', error);
@@ -182,7 +182,7 @@ const getClanMembersWithNicknames = async (req, res) => {
 // Clan boss run detaylarını getir
 const getClanBossRunDetails = async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.uid;
         const { id } = req.params;
 
         if (!userId) return res.status(401).json({ error: 'Yetki gerekli' });
@@ -227,17 +227,17 @@ const getClanBossRunDetails = async (req, res) => {
             'SELECT other_players FROM users WHERE uid = $1',
             [userId]
         );
-        
+
         const viewerOtherPlayers = viewerResult.rows[0]?.other_players || {};
         const participantNicknames = {};
-        
+
         // Extract nickname information
         for (const [key, friendData] of Object.entries(viewerOtherPlayers)) {
             if (friendData && friendData.uid && friendData.nickname) {
                 participantNicknames[friendData.uid] = friendData.nickname;
             }
         }
-        
+
         // Add nickname information to participants
         const participantsWithNicknames = participantsResult.rows.map(participant => ({
             ...participant,
@@ -259,17 +259,17 @@ const getClanBossRunDetails = async (req, res) => {
             'SELECT other_players FROM users WHERE uid = $1',
             [userId]
         );
-        
+
         const otherPlayers = userResult.rows[0]?.other_players || {};
         const creatorNicknames = {};
-        
+
         // Extract nickname information
         for (const [key, friendData] of Object.entries(otherPlayers)) {
             if (friendData && friendData.uid && friendData.nickname) {
                 creatorNicknames[friendData.uid] = friendData.nickname;
             }
         }
-        
+
         // Add nickname information to run
         const runWithNickname = {
             ...run,
@@ -290,7 +290,7 @@ const getClanBossRunDetails = async (req, res) => {
 // Clan'ın tüm boss run'larını getir
 const getClanBossRuns = async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.uid;
         const { clanId } = req.params;
 
         if (!userId || !clanId) return res.status(400).json({ error: 'Eksik bilgi' });
@@ -326,17 +326,17 @@ const getClanBossRuns = async (req, res) => {
             'SELECT other_players FROM users WHERE uid = $1',
             [userId]
         );
-        
+
         const otherPlayers = userResult.rows[0]?.other_players || {};
         const creatorNicknames = {};
-        
+
         // Extract nickname information
         for (const [key, friendData] of Object.entries(otherPlayers)) {
             if (friendData && friendData.uid && friendData.nickname) {
                 creatorNicknames[friendData.uid] = friendData.nickname;
             }
         }
-        
+
         // Add nickname information to each run
         const runsWithNicknames = runsResult.rows.map(run => ({
             ...run,
@@ -353,7 +353,7 @@ const getClanBossRuns = async (req, res) => {
 // Katılımcı ödeme durumunu güncelle
 const updateParticipantPayStatus = async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.uid;
         const { runId, participantUserId } = req.params;
         const { isPaid } = req.body;
 
@@ -393,7 +393,7 @@ const updateParticipantPayStatus = async (req, res) => {
 // Kayıttan kendini çıkar
 const removeSelfFromRun = async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.uid;
         const { runId } = req.params;
 
         await pool.query(
@@ -411,7 +411,7 @@ const removeSelfFromRun = async (req, res) => {
 // Kayıttan başka bir kullanıcıyı çıkar (sadece lider veya oluşturucu)
 const removeParticipantFromRun = async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.uid;
         const { runId, participantUserId } = req.params;
 
         // Yetki kontrolü: Kaydı oluşturan kişi veya klan lideri mi?
@@ -450,7 +450,7 @@ const removeParticipantFromRun = async (req, res) => {
 // Kaydı tamamen sil (Sadece oluşturan kişi)
 const deleteClanBossRun = async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.uid;
         const { id } = req.params;
 
         const runCheck = await pool.query('SELECT created_by FROM clan_boss_runs WHERE id = $1', [id]);
