@@ -38,7 +38,7 @@ class MessageController {
       logDebug(`getAllMessages Check - UserID Param: "${userId}", AuthUser ID: "${req.user.id}", Type: ${typeof req.user.id}`);
 
       // GÜVENLİK: Sadece kendi mesajlarını görebilir
-      if (req.user.id !== userId) {
+      if (req.user.uid !== userId) {
         logDebug(`BLOCKED! Param: "${userId}" !== Token: "${req.user.id}"`);
         console.warn(`[MSG BLOCKED] Unauthorized access. Param: ${userId}, Token: ${req.user.id}`);
         return res.status(403).json({
@@ -71,7 +71,7 @@ class MessageController {
           'SELECT username FROM users WHERE uid = $1',
           [msg.sender_id]
         );
-        
+
         return {
           ...msg,
           text: EncryptionService.decrypt(msg.text),
@@ -92,7 +92,7 @@ class MessageController {
       const { userId, contactId } = req.params;
 
       // GÜVENLİK
-      if (req.user.id !== userId) {
+      if (req.user.uid !== userId) {
         return res.status(403).json({ error: 'Unauthorized access to conversation' });
       }
 
@@ -113,7 +113,7 @@ class MessageController {
           'SELECT username FROM users WHERE uid = $1',
           [msg.sender_id]
         );
-        
+
         return {
           ...msg,
           text: EncryptionService.decrypt(msg.text),
@@ -135,7 +135,7 @@ class MessageController {
       const { receiverId, text } = req.body;
 
       // GÜVENLİK: Kimlik doğrulama
-      if (req.user.id !== userId) {
+      if (req.user.uid !== userId) {
         return res.status(403).json({ error: 'Sender identity mismatch' });
       }
 
@@ -205,7 +205,7 @@ class MessageController {
       const { userId } = req.body;
 
       // GÜVENLİK
-      if (req.user.id !== userId) {
+      if (req.user.uid !== userId) {
         return res.status(403).json({ error: 'Unauthorized' });
       }
 
@@ -240,7 +240,7 @@ class MessageController {
   static async deleteMessage(req, res) {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = req.user.uid;
 
       // Mesajı bul
       const msgResult = await pool.query(`SELECT * FROM private_messages WHERE id = $1`, [id]);
@@ -274,7 +274,7 @@ class MessageController {
   static async getUnreadCount(req, res) {
     try {
       const { userId } = req.params;
-      if (req.user.id !== userId) return res.status(403).json({ error: 'Unauthorized' });
+      if (req.user.uid !== userId) return res.status(403).json({ error: 'Unauthorized' });
 
       const result = await pool.query(
         `SELECT COUNT(*) as unread_count FROM private_messages 
@@ -295,7 +295,7 @@ class MessageController {
       const { userId } = req.params;
       const { blockId } = req.body;
 
-      if (req.user.id !== userId) return res.status(403).json({ error: 'Unauthorized' });
+      if (req.user.uid !== userId) return res.status(403).json({ error: 'Unauthorized' });
 
       await pool.query(
         `INSERT INTO blocked_users (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
@@ -314,7 +314,7 @@ class MessageController {
     try {
       const { userId, blockId } = req.params;
 
-      if (req.user.id !== userId) return res.status(403).json({ error: 'Unauthorized' });
+      if (req.user.uid !== userId) return res.status(403).json({ error: 'Unauthorized' });
 
       await pool.query(
         `DELETE FROM blocked_users WHERE blocker_id = $1 AND blocked_id = $2`,
@@ -333,7 +333,7 @@ class MessageController {
     try {
       const { userId } = req.params;
 
-      if (req.user.id !== userId) return res.status(403).json({ error: 'Unauthorized' });
+      if (req.user.uid !== userId) return res.status(403).json({ error: 'Unauthorized' });
 
       const result = await pool.query(
         `SELECT bu.blocked_id, u.username as blocked_username, u."mainCharacter" as blocked_main_character

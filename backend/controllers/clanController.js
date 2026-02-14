@@ -162,7 +162,7 @@ const getClanById = async (req, res) => {
 const getClanMembers = async (req, res) => {
   try {
     const { clanId } = req.params;
-    const userId = req.user?.id;
+    const userId = req.user?.uid;
 
     const result = await pool.query(`
       SELECT 
@@ -180,34 +180,34 @@ const getClanMembers = async (req, res) => {
     // Eğer kullanıcı giriş yapmışsa, onun nickname bilgilerini de ekle
     if (userId) {
       console.log('[DEBUG] Requesting user ID:', userId);
-      
+
       const userResult = await pool.query(
         'SELECT other_players FROM users WHERE uid = $1',
         [userId]
       );
-      
+
       const otherPlayers = userResult.rows[0]?.other_players || {};
       console.log('[DEBUG] User other_players:', JSON.stringify(otherPlayers, null, 2));
-      
+
       const nicknames = {};
-      
+
       // Nickname bilgilerini çıkar
       for (const [key, friendData] of Object.entries(otherPlayers)) {
         if (friendData && friendData.uid && friendData.nickname) {
           nicknames[friendData.uid] = friendData.nickname;
         }
       }
-      
+
       console.log('[DEBUG] Extracted nicknames:', nicknames);
-      
+
       // Her klan üyesi için nickname bilgisini ekle
       const membersWithNicknames = result.rows.map(member => ({
         ...member,
         nickname: nicknames[member.user_id] || member.username
       }));
-      
+
       console.log('[DEBUG] Final members with nicknames:', membersWithNicknames);
-      
+
       res.status(200).json(membersWithNicknames);
     } else {
       // Kullanıcı giriş yapmamışsa, normal username'i kullan
@@ -215,7 +215,7 @@ const getClanMembers = async (req, res) => {
         ...member,
         nickname: member.username
       }));
-      
+
       res.status(200).json(membersWithUsernames);
     }
   } catch (error) {
@@ -348,7 +348,7 @@ const deleteClan = async (req, res) => {
 // Kullanıcıları getir (klana eklenebilecek) - Arkadaş listesine göre filtrelenir
 const getAvailableUsers = async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.uid;
 
     if (!userId) {
       return res.status(401).json({ error: 'Yetkilendirme gerekli' });
@@ -413,7 +413,7 @@ const getAvailableUsers = async (req, res) => {
 // Kullanıcıyı klandan çıkarma (sadece klan sahibi)
 const removeMemberFromClan = async (req, res) => {
   try {
-    const ownerId = req.user?.id;
+    const ownerId = req.user?.uid;
     const { clanId, userId } = req.params;
 
     if (!ownerId || !clanId || !userId) {
@@ -467,7 +467,7 @@ const removeMemberFromClan = async (req, res) => {
 // Klan mesajlarını getir (Filtreleme desteği ile)
 const getClanMessages = async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.uid;
     const { clanId } = req.params;
     const { text, sender, startDate, endDate } = req.query;
 
@@ -538,7 +538,7 @@ const getClanMessages = async (req, res) => {
         // UID üzerinden doğrudan eşleşme (En güvenilir)
         const entries = Object.entries(viewerFriends);
         const friendEntry = entries.find(([key, f]) => f && f.uid && String(f.uid) === String(msg.sender_id));
-        
+
         if (friendEntry && friendEntry[1].nickname) {
           // Takma adı varsa onu kullan
           displayName = friendEntry[1].nickname;
@@ -567,7 +567,7 @@ const getClanMessages = async (req, res) => {
 // Klan mesajı gönder (Rate limit dahil)
 const sendClanMessage = async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.uid;
     const { clanId } = req.params;
     const { text } = req.body;
 

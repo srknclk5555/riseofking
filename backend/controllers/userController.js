@@ -31,45 +31,45 @@ async function syncUserFromFirebase(userId) {
       console.log('Firebase not available, skipping sync');
       return;
     }
-    
+
     // Firestore'dan kullanıcı verilerini al
     const userDoc = await firestoreDb.collection('artifacts').doc('rise_online_tracker_app')
       .collection('users').doc(userId).get();
-    
+
     if (!userDoc.exists) {
       console.log(`Kullanıcı ${userId} için Firestore verisi bulunamadı.`);
       return;
     }
-    
+
     const firestoreData = userDoc.data();
     const firestoreOtherPlayers = firestoreData.otherPlayers || {};
-    
+
     // Firestore'daki otherPlayers yapısını PostgreSQL formatına dönüştür
     const postgresqlOtherPlayers = {};
     let playerIndex = 0;
-    
+
     for (const [firestoreKey, firestoreFriend] of Object.entries(firestoreOtherPlayers)) {
       if (firestoreFriend && firestoreFriend.uid) {
         const playerKey = `player_${playerIndex}`;
-        
+
         postgresqlOtherPlayers[playerKey] = {
           uid: firestoreFriend.uid,
           nickname: firestoreFriend.nickname || firestoreFriend.realUsername || 'Bilinmeyen',
           username: firestoreFriend.realUsername || 'Bilinmeyen'
         };
-        
+
         playerIndex++;
       }
     }
-    
+
     // PostgreSQL'i güncelle
     await db.query(
       'UPDATE users SET other_players = $1 WHERE uid = $2',
       [postgresqlOtherPlayers, userId]
     );
-    
+
     console.log(`Kullanıcı ${userId} için other_players senkronize edildi. Toplam ${playerIndex} arkadaş.`);
-    
+
   } catch (error) {
     console.error(`Kullanıcı ${userId} senkronizasyon hatası:`, error.message);
   }
@@ -80,7 +80,7 @@ const getProfile = async (req, res) => {
   try {
     await ensureUsersTable();
     const { uid } = req.params;
-    const actingUid = String(req.user?.id || '');
+    const actingUid = String(req.user?.uid || '');
     if (!actingUid || actingUid !== String(uid)) {
       return res.status(403).json({ error: 'Bu profil için yetkiniz yok' });
     }
@@ -119,7 +119,7 @@ const updateProfile = async (req, res) => {
     await ensureUsersTable();
 
     const { uid } = req.params;
-    const actingUid = String(req.user?.id || '');
+    const actingUid = String(req.user?.uid || '');
 
     if (!actingUid || actingUid !== String(uid)) {
       return res.status(403).json({ error: 'Bu profil için yetkiniz yok' });
@@ -187,19 +187,19 @@ const addFriend = async (req, res) => {
     await ensureUsersTable();
     const { uid } = req.params;
     const { nickname } = req.body;
-    
+
     if (!nickname) {
       return res.status(400).json({ error: 'Nickname gerekli' });
     }
-    
+
     const key = Date.now().toString();
-    
+
     // Sadece Firestore'a ekle (frontend zaten yapar)
     // Ancak PostgreSQL'i de güncelleyelim
-    
+
     // Firestore'dan kullanıcı verilerini al ve PostgreSQL'i güncelle
     await syncUserFromFirebase(uid);
-    
+
     res.json({ key, nickname, linked: false });
   } catch (error) {
     console.error('Arkadaş ekleme hatası:', error);
@@ -212,13 +212,13 @@ const deleteFriend = async (req, res) => {
   try {
     await ensureUsersTable();
     const { uid, friendKey } = req.params;
-    
+
     // Sadece PostgreSQL'den sil (Firestore frontend tarafından zaten silinir)
     await db.query(`UPDATE users SET other_players = other_players - $2 WHERE uid = $1`, [uid, friendKey]);
-    
+
     // Firestore'dan veriyi al ve PostgreSQL'i güncelle
     await syncUserFromFirebase(uid);
-    
+
     res.json({ message: 'Arkadaş silindi' });
   } catch (error) {
     console.error('Arkadaş silme hatası:', error);
@@ -253,10 +253,10 @@ const linkFriend = async (req, res) => {
     `;
 
     await db.query(query, [uid, friendKey, targetUid, targetNickname]);
-    
+
     // Firestore'dan veriyi al ve PostgreSQL'i güncelle
     await syncUserFromFirebase(uid);
-    
+
     res.json({ message: 'Arkadaş bağlandı' });
   } catch (error) {
     console.error('Arkadaş bağlama hatası:', error);
