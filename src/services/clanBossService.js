@@ -2,7 +2,7 @@ import { API_BASE } from './apiConfig';
 
 const clanBossService = {
     getClanBossRuns: async (clanId) => {
-        const token = localStorage.getItem('authToken');
+        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/runs/clan/${clanId}`, {
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -19,7 +19,7 @@ const clanBossService = {
     },
 
     getClanMembers: async (clanId) => {
-        const token = localStorage.getItem('authToken');
+        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/members/${clanId}`, {
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -36,7 +36,7 @@ const clanBossService = {
     },
 
     createClanBossRun: async (runData) => {
-        const token = localStorage.getItem('authToken');
+        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/runs`, {
             method: 'POST',
             headers: {
@@ -55,7 +55,7 @@ const clanBossService = {
     },
 
     updateClanBossRun: async (id, runData) => {
-        const token = localStorage.getItem('authToken');
+        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/runs/${id}`, {
             method: 'PUT',
             headers: {
@@ -74,7 +74,7 @@ const clanBossService = {
     },
 
     deleteClanBossRun: async (id) => {
-        const token = localStorage.getItem('authToken');
+        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/runs/${id}`, {
             method: 'DELETE',
             headers: {

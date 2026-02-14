@@ -19,7 +19,7 @@ export const register = async (userData) => {
     const data = await response.json();
 
     // Store the token in localStorage
-    localStorage.setItem('authToken', data.token);
+    localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
 
     return data;
@@ -48,7 +48,7 @@ export const login = async (credentials) => {
     const data = await response.json();
 
     // Store the token in localStorage
-    localStorage.setItem('authToken', data.token);
+    localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
 
     return data;
@@ -60,7 +60,7 @@ export const login = async (credentials) => {
 
 // Logout user
 export const logout = () => {
-  localStorage.removeItem('authToken');
+  localStorage.removeItem('token');
   localStorage.removeItem('user');
   window.location.reload();
 };
@@ -73,12 +73,12 @@ export const getCurrentUser = () => {
 
 // Get auth token
 export const getAuthToken = () => {
-  return localStorage.getItem('authToken');
+  return localStorage.getItem('token');
 };
 
 // Check if user is authenticated
 export const isAuthenticated = () => {
-  return !!localStorage.getItem('authToken');
+  return !!localStorage.getItem('token');
 };
 
 // Update user profile

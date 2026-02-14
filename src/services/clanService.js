@@ -1,7 +1,7 @@
 import { API_BASE } from './apiConfig';
 
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('authToken');
+  const token = localStorage.getItem('token');
   const headers = {
     'Content-Type': 'application/json',
   };

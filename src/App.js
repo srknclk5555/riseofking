@@ -793,7 +793,7 @@ const AuthScreen = () => {
       } else {
         // Login user with new auth system
         await authService.login({
-          email: generateEmail(username),
+          username: username,
           password: password
         });
         console.log('[DEBUG] User logged in successfully');
