@@ -252,18 +252,20 @@ const linkFriend = async (req, res) => {
     const { uid, friendKey } = req.params;
     const { targetUid, targetNickname } = req.body;
 
+    // Use nested jsonb_set to update 'uid', 'nickname', and 'linked' within the nested friend object
+    // without overwriting the entire 'other_players' object.
     const query = `
       UPDATE users 
       SET other_players = jsonb_set(
-        other_players,
-        array[$2, 'uid'],
-        to_jsonb($3::text)
-      ) || jsonb_set(
-        other_players,
-        array[$2, 'nickname'],
-        to_jsonb($4::text)
-      ) || jsonb_set(
-        other_players,
+        jsonb_set(
+          jsonb_set(
+            COALESCE(other_players, '{}'::jsonb),
+            array[$2, 'uid'],
+            to_jsonb($3::text)
+          ),
+          array[$2, 'nickname'],
+          to_jsonb($4::text)
+        ),
         array[$2, 'linked'],
         'true'::jsonb
       )
