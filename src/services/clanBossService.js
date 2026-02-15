@@ -18,6 +18,23 @@ const clanBossService = {
         return response.json();
     },
 
+    getClanBossRunDetails: async (id) => {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_BASE}/clan-boss/runs/${id}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Run detayları yüklenemedi');
+        }
+
+        return response.json();
+    },
+
     getClanMembers: async (clanId) => {
         const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/members/${clanId}`, {

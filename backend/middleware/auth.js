@@ -38,7 +38,7 @@ module.exports = async function authMiddleware(req, res, next) {
       try {
         const decoded = await admin.auth().verifyIdToken(token);
         console.log('[AUTH DEBUG] Firebase Token Verified. UID:', decoded.uid);
-        req.user = { id: decoded.uid, firebase: true, claims: decoded };
+        req.user = { id: decoded.uid, uid: decoded.uid, firebase: true, claims: decoded };
         return next();
       } catch (e) {
         console.log('[AUTH DEBUG] Firebase verify failed:', e.message);

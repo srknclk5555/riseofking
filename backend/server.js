@@ -42,6 +42,7 @@ app.use('/api/messages', require('./routes/messages'));
 app.use('/api/mobs', require('./routes/mobs'));
 app.use('/api/clans', require('./routes/clans'));
 app.use('/api/clan-boss', require('./routes/clanBossRoutes'));
+app.use('/api/clan-bank', require('./routes/clanBankRoutes'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/discord', require('./routes/discord'));

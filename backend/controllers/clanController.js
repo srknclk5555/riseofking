@@ -162,14 +162,28 @@ const getClanById = async (req, res) => {
 const getClanMembers = async (req, res) => {
   try {
     const { clanId } = req.params;
-    const userId = req.user?.uid;
+    const viewerId = req.user?.uid || req.user?.id; // Robust ID fetch
 
-    const result = await pool.query(`
+    console.log(`[DEBUG] getClanMembers - Clan: ${clanId}, Viewer: ${viewerId}`);
+
+    if (!clanId) {
+      return res.status(400).json({ error: 'Klan ID gerekli' });
+    }
+
+    // 1. Klan liderini (owner) bul
+    const clanResult = await pool.query('SELECT owner_id FROM clans WHERE id = $1', [clanId]);
+    if (clanResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Klan bulunamadı' });
+    }
+    const leaderId = clanResult.rows[0].owner_id;
+
+    // 2. Üyeleri ve onların temel bilgilerini getir
+    const membersResult = await pool.query(`
       SELECT 
         u.uid as user_id,
         cm.role,
         cm.joined_at,
-        u."mainCharacter" as display_name,
+        u."mainCharacter" as char_name,
         u.username
       FROM clan_members cm
       LEFT JOIN users u ON cm.user_id = u.uid
@@ -177,47 +191,64 @@ const getClanMembers = async (req, res) => {
       ORDER BY cm.joined_at ASC
     `, [clanId]);
 
-    // Eğer kullanıcı giriş yapmışsa, onun nickname bilgilerini de ekle
-    if (userId) {
-      console.log('[DEBUG] Requesting user ID:', userId);
+    const members = membersResult.rows;
 
-      const userResult = await pool.query(
-        'SELECT other_players FROM users WHERE uid = $1',
-        [userId]
-      );
+    // 3. Viewer ve Leader'ın arkadaş listelerini (other_players) çek
+    let viewerFriends = {};
+    let leaderFriends = {};
 
-      const otherPlayers = userResult.rows[0]?.other_players || {};
-      console.log('[DEBUG] User other_players:', JSON.stringify(otherPlayers, null, 2));
+    if (viewerId) {
+      const viewerRes = await pool.query('SELECT other_players FROM users WHERE uid = $1', [viewerId]);
+      viewerFriends = viewerRes.rows[0]?.other_players || {};
+    }
 
-      const nicknames = {};
+    if (leaderId && leaderId !== viewerId) {
+      const leaderRes = await pool.query('SELECT other_players FROM users WHERE uid = $1', [leaderId]);
+      leaderFriends = leaderRes.rows[0]?.other_players || {};
+    } else if (leaderId === viewerId) {
+      leaderFriends = viewerFriends;
+    }
 
-      // Nickname bilgilerini çıkar
-      for (const [key, friendData] of Object.entries(otherPlayers)) {
-        if (friendData && friendData.uid && friendData.nickname) {
-          nicknames[friendData.uid] = friendData.nickname;
-        }
+    // Nickname haritaları oluştur (UID -> Nickname)
+    const viewerNicknames = {};
+    Object.values(viewerFriends).forEach(f => {
+      if (f && f.uid && f.nickname) viewerNicknames[f.uid] = f.nickname;
+    });
+
+    const leaderNicknames = {};
+    Object.values(leaderFriends).forEach(f => {
+      if (f && f.uid && f.nickname) leaderNicknames[f.uid] = f.nickname;
+    });
+
+    // 4. Her üye için isim çözümleme yap
+    const resolvedMembers = members.map(member => {
+      let resolvedNickname = '';
+
+      // Kural 1: Kendisi mi? -> mainCharacter
+      if (member.user_id === viewerId) {
+        resolvedNickname = member.char_name || member.username;
+      }
+      // Kural 2: Viewer'ın arkadaş listesinde var mı?
+      else if (viewerNicknames[member.user_id]) {
+        resolvedNickname = viewerNicknames[member.user_id];
+      }
+      // Kural 3: Liderin arkadaş listesinde var mı?
+      else if (leaderNicknames[member.user_id]) {
+        resolvedNickname = leaderNicknames[member.user_id];
+      }
+      // Kural 4: Kendi mainCharacter'ı
+      else {
+        resolvedNickname = member.char_name || member.username;
       }
 
-      console.log('[DEBUG] Extracted nicknames:', nicknames);
-
-      // Her klan üyesi için nickname bilgisini ekle
-      const membersWithNicknames = result.rows.map(member => ({
+      return {
         ...member,
-        nickname: nicknames[member.user_id] || member.username
-      }));
+        display_name: member.char_name || member.username, // UI için display_name
+        nickname: resolvedNickname // Öncelikli gösterilecek isim
+      };
+    });
 
-      console.log('[DEBUG] Final members with nicknames:', membersWithNicknames);
-
-      res.status(200).json(membersWithNicknames);
-    } else {
-      // Kullanıcı giriş yapmamışsa, normal username'i kullan
-      const membersWithUsernames = result.rows.map(member => ({
-        ...member,
-        nickname: member.username
-      }));
-
-      res.status(200).json(membersWithUsernames);
-    }
+    res.status(200).json(resolvedMembers);
   } catch (error) {
     console.error('❌ Clan üyeleri getirme hatası:', error);
     res.status(500).json({ error: 'Clan üyeleri getirilemedi' });
@@ -348,7 +379,7 @@ const deleteClan = async (req, res) => {
 // Kullanıcıları getir (klana eklenebilecek) - Arkadaş listesine göre filtrelenir
 const getAvailableUsers = async (req, res) => {
   try {
-    const userId = req.user?.uid;
+    const userId = req.user?.uid || req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ error: 'Yetkilendirme gerekli' });
@@ -385,11 +416,19 @@ const getAvailableUsers = async (req, res) => {
       return res.status(200).json([]);
     }
 
+    // Nickname haritası oluştur (UID -> Nickname)
+    const nicknames = {};
+    Object.values(otherPlayers).forEach(p => {
+      if (p && p.uid && p.nickname) {
+        nicknames[p.uid] = p.nickname;
+      }
+    });
+
     // Arkadaş listesinde olan ve SADECE BU KLANIN üyesi olmayan kullanıcıları getir
     const result = await pool.query(`
       SELECT 
         u.uid as id,
-        u."mainCharacter" as nickname,
+        u."mainCharacter" as char_name,
         u.username
       FROM users u
       WHERE u.uid = ANY($1)
@@ -403,7 +442,14 @@ const getAvailableUsers = async (req, res) => {
       LIMIT 100
     `, [friendIds, userClanIds]);
 
-    res.status(200).json(result.rows);
+    // Sonuçlara arkadaş listesindeki nickname'i ekle, yoksa mainCharacter'ı yoksa username'i kullan
+    const formattedUsers = result.rows.map(user => ({
+      id: user.id,
+      username: user.username,
+      nickname: nicknames[user.id] || user.char_name || user.username
+    }));
+
+    res.status(200).json(formattedUsers);
   } catch (error) {
     console.error('❌ Kullanıcılar getirme hatası:', error);
     res.status(500).json({ error: 'Kullanıcılar getirilemedi' });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
@@ -107,6 +107,37 @@ export default function App() {
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [tooltipContent, setTooltipContent] = useState({});
+  const tooltipRef = useRef(null);
+
+  // Dinamik Tooltip Pozisyonlama: Viewport dışına taşmasını engeller
+  useLayoutEffect(() => {
+    if (tooltipVisible && tooltipRef.current) {
+      const tooltip = tooltipRef.current;
+      const rect = tooltip.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      let x = tooltipPosition.x;
+      let y = tooltipPosition.y;
+
+      // Sağ kenarı kontrol et
+      if (x + rect.width > vw) {
+        x = x - rect.width - 30; // 30 piksel (15+15) cursor'un soluna atar
+      }
+
+      // Alt kenarı kontrol et
+      if (y + rect.height > vh) {
+        y = y - rect.height - 30; // Cursor'un üstüne atar
+      }
+
+      // Sol ve üst kenar güvenliği
+      if (x < 10) x = 10;
+      if (y < 10) y = 10;
+
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${y}px`;
+    }
+  }, [tooltipVisible, tooltipPosition]);
 
   // Eşyaları PostgreSQL'den çek (Küresel)
   useEffect(() => {
@@ -178,8 +209,8 @@ export default function App() {
 
   const showTooltip = (item, e) => {
     // Kasa itemi ise global listeden detayları bul
-    // İtem ya itemName (kasa) ya da name (globalItems) property'sine sahip
-    const itemName = item.name || item.itemName;
+    // İtem ya itemName (kasa) ya da name (globalItems) ya da item_name (banka) property'sine sahip
+    const itemName = item.item_name || item.name || item.itemName;
     const fullItem = globalItems.find(i => (i.name || '').toLowerCase() === (itemName || '').toLowerCase()) || item;
     setTooltipContent(fullItem);
     setTooltipPosition({ x: e.clientX + 15, y: e.clientY + 15 });
@@ -632,7 +663,7 @@ export default function App() {
           {activeTab === "Events" && <EventsPage userData={userData} selectedDate={selectedDate} prices={prices} uid={user.uid} />}
           {activeTab === "Farm" && <FarmPage farms={farms} userData={userData} selectedDate={selectedDate} uid={user.uid} showNotification={showNotification} targetFarmId={targetFarmId} setTargetFarmId={setTargetFarmId} checkRateLimit={checkRateLimit} />}
           {activeTab === "Messaging" && <MessagingPage userData={userData} uid={user.uid} messages={privateMessages} checkRateLimit={checkRateLimit} showNotification={showNotification} refreshMessages={refreshMessages} />}
-          {activeTab === "Clan" && <ClanPage userData={userData} uid={user.uid} showNotification={showNotification} />}
+          {activeTab === "Clan" && <ClanPage userData={userData} uid={user.uid} showNotification={showNotification} showTooltip={showTooltip} hideTooltip={hideTooltip} />}
           {activeTab === "Admin" && <AdminPage userData={userData} uid={user.uid} prices={prices} showNotification={showNotification} setActiveTab={setActiveTab} onlineUsers={onlineUsers} checkRateLimit={checkRateLimit} globalItems={globalItems} showTooltip={showTooltip} hideTooltip={hideTooltip} refreshFriends={refreshFriends} />}
           {activeTab === "System" && <SystemPage userData={userData} uid={user.uid} showNotification={showNotification} checkRateLimit={checkRateLimit} />}
         </div>
@@ -641,11 +672,12 @@ export default function App() {
       {tooltipVisible && (
         <div
           id="item-tooltip"
+          ref={tooltipRef}
           className="fixed w-[320px] bg-gray-900 border border-gray-600 shadow-[0_0_30px_rgba(0,0,0,0.9)] backdrop-blur-md rounded-lg p-5 pointer-events-none transition-opacity duration-100 z-[1000]"
           style={{
-            left: `${tooltipPosition.x}px`,
-            top: `${tooltipPosition.y}px`,
-            opacity: tooltipVisible ? 1 : 0
+            opacity: tooltipVisible ? 1 : 0,
+            left: '-1000px', // İlk render'da dışarıda kalsın, useLayoutEffect hemen düzeltecek
+            top: '-1000px'
           }}
         >
           <div className="border-b border-white/10 pb-3 mb-3 text-center">

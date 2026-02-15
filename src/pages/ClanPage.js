@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Crown, Users, Plus, X, Search, Sword, Database, MessageSquare, AlertCircle, ArrowRight, UserPlus, Calendar, Coins, UserCheck, UserX } from 'lucide-react';
+import { Crown, Users, Plus, X, Search, Sword, Database, MessageSquare, AlertCircle, ArrowRight, UserPlus, Calendar, Coins, UserCheck, UserX, Tag, TrendingUp, BarChart2, PieChart as PieIcon, Wallet } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
+} from 'recharts';
 import { clanService } from '../services/clanService';
 import { itemService } from '../services/api';
 import clanBossService from '../services/clanBossService';
+import clanBankService from '../services/clanBankService';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
 
-const ClanPage = ({ userData, uid, showNotification }) => {
+const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip }) => {
   const [myClans, setMyClans] = useState([]);
   const [clanMembers, setClanMembers] = useState([]);
   const [availableUsers, setAvailableUsers] = useState([]);
@@ -30,9 +34,10 @@ const ClanPage = ({ userData, uid, showNotification }) => {
   const [messageFilters, setMessageFilters] = useState({ text: '', sender: '', startDate: '', endDate: '' });
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = React.useRef(null);
-  
+
   // Clan Boss States
   const [clanBossRuns, setClanBossRuns] = useState([]);
+  const [bossFilters, setBossFilters] = useState({ itemName: '', playerName: '', date: '' });
   const [selectedRun, setSelectedRun] = useState(null);
   const [showCreateRunModal, setShowCreateRunModal] = useState(false);
   const [showRunDetailModal, setShowRunDetailModal] = useState(false);
@@ -44,6 +49,43 @@ const ClanPage = ({ userData, uid, showNotification }) => {
   const [newDropQuantity, setNewDropQuantity] = useState(1);
   const [items, setItems] = useState([]);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
+
+  // Clan Bank States
+  const [bankData, setBankData] = useState({ balance: 0, items: [], role: 'member' });
+  const [bankView, setBankView] = useState('grid'); // 'list' or 'grid'
+  const [bankPage, setBankPage] = useState(1);
+  const [bankSearch, setBankSearch] = useState('');
+  const [showItemActionModal, setShowItemActionModal] = useState(false); // 'sell' or 'detail'
+  const [itemToSell, setItemToSell] = useState(null);
+  const [saleAmount, setSaleAmount] = useState('');
+  const [saleQuantity, setSaleQuantity] = useState(1);
+  const [saleDate, setSaleDate] = useState('');
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showManualItemModal, setShowManualItemModal] = useState(false);
+  const [paymentTarget, setPaymentTarget] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDescription, setPaymentDescription] = useState('');
+  const [transactions, setTransactions] = useState([]);
+  const [soldItems, setSoldItems] = useState([]);
+  const [showSoldItemsModal, setShowSoldItemsModal] = useState(false);
+  const [soldItemsView, setSoldItemsView] = useState('grid'); // 'list' or 'grid'
+
+  // Helper: İtem ismine göre ikon yolunu oluşturur
+  const getItemIcon = (itemName) => {
+    if (!itemName) return null;
+    try {
+      // Enhancement seviyesini kaldır: "Divine Earring (+1)" -> "Divine Earring"
+      const baseName = itemName.split(' (+')[0].split(' +')[0].trim();
+      // Boşlukları alt tire ile değiştir
+      const snakeName = baseName.replace(/ /g, '_');
+      // İkon yolunu oluştur
+      return `/ui_icons/Icon_Item_${snakeName}.png`;
+      // console.log(`Generated icon path for ${itemName}: ${path}`); // Debug log
+    } catch (err) {
+      console.error("Icon path error:", err);
+      return null;
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -73,6 +115,33 @@ const ClanPage = ({ userData, uid, showNotification }) => {
       fetchClanBossRuns();
     }
   }, [activeTab, selectedClan]);
+
+  // Tab değiştiğinde clan bankasını yükle
+  useEffect(() => {
+    if (activeTab === 'bank' && selectedClan) {
+      fetchClanBank();
+      fetchTransactions();
+      fetchSoldItems();
+    }
+  }, [activeTab, selectedClan]);
+
+  // Tab değiştiğinde rapor verilerini yükle
+  useEffect(() => {
+    if (activeTab === 'reports' && selectedClan) {
+      fetchClanBossRuns();
+      fetchSoldItems();
+    }
+  }, [activeTab, selectedClan]);
+
+  const fetchSoldItems = async () => {
+    try {
+      if (!selectedClan) return;
+      const data = await clanBankService.getSoldItems(selectedClan.id);
+      setSoldItems(data);
+    } catch (error) {
+      console.error('Error fetching sold items:', error);
+    }
+  };
 
   const fetchUserClans = async () => {
     try {
@@ -118,7 +187,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
 
   const handleViewClanDashboard = async (clan) => {
     try {
-      const members = await clanBossService.getClanMembers(clan.id);
+      const members = await clanService.getClanMembers(clan.id);
 
       if (Array.isArray(members)) {
         setClanMembers(members);
@@ -311,10 +380,20 @@ const ClanPage = ({ userData, uid, showNotification }) => {
     }
 
     try {
+      const processedDrops = drops.map(d => {
+        let itemId = d.item_id;
+        // Eğer ID yoksa (manuel ekleme durumu), listeden bulmaya çalış
+        if (!itemId && items) {
+          const matchedItem = items.find(i => i.name.toLowerCase() === d.item_name.toLowerCase());
+          if (matchedItem) itemId = matchedItem.id;
+        }
+        return { itemId, quantity: d.quantity };
+      }).filter(d => d.itemId); // ID'siz drop gönderme
+
       const runData = {
         date: runDate,
         participants: selectedParticipants.map(p => p.user_id),
-        drops: drops.map(d => ({ itemId: d.item_id, quantity: d.quantity }))
+        drops: processedDrops
       };
 
       await clanService.createClanBossRun(selectedClan.id, runData);
@@ -341,6 +420,13 @@ const ClanPage = ({ userData, uid, showNotification }) => {
     try {
       const runDetails = await clanService.getClanBossRunDetails(run.id);
       setSelectedRun(runDetails);
+
+      // Banka bilgisini tazele ki "Sat" butonu veya ödemeler güncel kalsın
+      if (selectedClan) {
+        fetchClanBank();
+        fetchTransactions();
+      }
+
       setShowRunDetailModal(true);
     } catch (error) {
       console.error('Run detayları yüklenemedi:', error);
@@ -352,6 +438,11 @@ const ClanPage = ({ userData, uid, showNotification }) => {
     try {
       await clanService.updateParticipantPayStatus(selectedRun.id, participantUserId, isPaid);
       showNotification('Ödeme durumu güncellendi.', 'success');
+
+      // Banka bilgisini tazele (İptal durumunda iade yansımalı)
+      fetchClanBank();
+      fetchTransactions();
+
       // Refresh run details
       const updatedRun = await clanService.getClanBossRunDetails(selectedRun.id);
       setSelectedRun(updatedRun);
@@ -429,6 +520,105 @@ const ClanPage = ({ userData, uid, showNotification }) => {
     setContextMenu({ ...contextMenu, visible: false }); // Menüyü kapat
     setShowRemoveConfirm(true);
   };
+
+  // --- BANKA ---
+  const fetchClanBank = async () => {
+    if (!selectedClan) return;
+    try {
+      const data = await clanBankService.getClanBank(selectedClan.id);
+      setBankData(data);
+    } catch (error) {
+      console.error('Banka yüklenemedi:', error);
+      showNotification('Banka bilgileri yüklenirken hata oluştu.', 'error');
+    }
+  };
+
+  const fetchTransactions = async () => {
+    if (!selectedClan) return;
+    try {
+      const data = await clanBankService.getTransactions(selectedClan.id);
+      setTransactions(data);
+    } catch (error) {
+      console.error('İşlemler yüklenemedi:', error);
+    }
+  };
+
+  const handleSellItem = async () => {
+    if (!itemToSell || !saleAmount || saleQuantity < 1) {
+      showNotification('Lütfen tüm alanları doldurun.', 'error');
+      return;
+    }
+    try {
+      const saleData = {
+        clanId: selectedClan.id,
+        itemId: itemToSell.id,
+        quantity: saleQuantity,
+        saleAmount: parseFloat(saleAmount),
+        saleDate: saleDate || new Date()
+      };
+      await clanBankService.sellItem(saleData);
+      showNotification('Satış başarıyla gerçekleştirildi.', 'success');
+      setShowItemActionModal(false);
+      setItemToSell(null);
+      setSaleAmount('');
+      setSaleQuantity(1);
+      fetchClanBank();
+      fetchTransactions();
+      fetchSoldItems(); // Satılan itemleri de güncelle
+      // Eğer bir run detayı açıksa onu da yenile
+      if (selectedRun) {
+        const updatedRun = await clanService.getClanBossRunDetails(selectedRun.id);
+        setSelectedRun(updatedRun);
+      }
+    } catch (error) {
+      console.error('Satış hatası:', error);
+      showNotification(error.message, 'error');
+    }
+  };
+
+  const handlePayParticipant = async () => {
+    if (!paymentTarget || !paymentAmount) {
+      showNotification('Lütfen tutar girin.', 'error');
+      return;
+    }
+    try {
+      const paymentData = {
+        clanId: selectedClan.id,
+        runId: selectedRun.id,
+        participantUserId: paymentTarget.user_id,
+        amount: parseFloat(paymentAmount),
+        description: paymentDescription
+      };
+      await clanBankService.payParticipant(paymentData);
+      showNotification('Ödeme yapıldı.', 'success');
+      setShowPaymentModal(false);
+      setPaymentTarget(null);
+      setPaymentAmount('');
+      setPaymentDescription('');
+      fetchClanBank();
+      fetchTransactions();
+      // Run detaylarını yenile
+      const updatedRun = await clanService.getClanBossRunDetails(selectedRun.id);
+      setSelectedRun(updatedRun);
+    } catch (error) {
+      console.error('Ödeme hatası:', error);
+      showNotification(error.message, 'error');
+    }
+  };
+
+  const handleAddManualBankItem = async (itemName, quantity) => {
+    try {
+      await clanBankService.addManualItem({
+        clanId: selectedClan.id,
+        itemName,
+        quantity
+      });
+      showNotification('İtem bankaya eklendi.', 'success');
+      fetchClanBank();
+    } catch (error) {
+      showNotification('İtem eklenemedi.', 'error');
+    }
+  }
 
   // Menü açma/kapama
   const handleMemberClick = (e, member, clanId) => {
@@ -543,6 +733,18 @@ const ClanPage = ({ userData, uid, showNotification }) => {
       </div>
     );
   };
+
+  const filteredBossRuns = clanBossRuns.filter(run => {
+    const matchesItem = !bossFilters.itemName || (run.drops || []).some(d => (d.item_name || '').toLowerCase().includes(bossFilters.itemName.toLowerCase()));
+    const matchesPlayer = !bossFilters.playerName || (run.participants || []).some(p =>
+      (p.username || '').toLowerCase().includes(bossFilters.playerName.toLowerCase()) ||
+      (p.main_character || '').toLowerCase().includes(bossFilters.playerName.toLowerCase()) ||
+      (p.nickname || '').toLowerCase().includes(bossFilters.playerName.toLowerCase())
+    );
+    const matchesDate = !bossFilters.date || (run.run_date && new Date(run.run_date).toISOString().split('T')[0] === bossFilters.date);
+
+    return matchesItem && matchesPlayer && matchesDate;
+  });
 
   // Liste Görünümü
   if (currentView === 'list') {
@@ -685,6 +887,309 @@ const ClanPage = ({ userData, uid, showNotification }) => {
       </div>
     );
   }
+  const renderReportsTab = () => {
+    // 1. Data Calculation
+    const totalRevenue = (clanBossRuns || []).reduce((sum, run) => sum + parseFloat(run.total_sold_amount || 0), 0);
+    const totalPaid = (clanBossRuns || []).reduce((sum, run) => sum + parseFloat(run.total_paid_amount || 0), 0);
+
+    const memberStats = {};
+    (clanBossRuns || []).forEach(run => {
+      const participants = run.participants || [];
+      const runRevenue = parseFloat(run.total_sold_amount || 0);
+      const sharePerPerson = participants.length > 0 ? Math.floor(runRevenue / participants.length) : 0;
+
+      participants.forEach(p => {
+        if (!memberStats[p.user_id]) {
+          memberStats[p.user_id] = { id: p.user_id, name: p.nickname || p.main_character || p.username, runs: 0, earnings: 0, expected: 0 };
+        }
+        memberStats[p.user_id].runs += 1;
+        memberStats[p.user_id].earnings += parseFloat(p.paid_amount || 0);
+        memberStats[p.user_id].expected += sharePerPerson;
+      });
+    });
+
+    const totalPending = Object.values(memberStats).reduce((sum, s) => sum + Math.max(0, s.expected - s.earnings), 0);
+    const topParticipants = Object.values(memberStats).sort((a, b) => b.runs - a.runs).slice(0, 5);
+    const topEarners = Object.values(memberStats).sort((a, b) => b.earnings - a.earnings).slice(0, 5);
+    const avgContribution = clanMembers.length > 0 ? totalRevenue / clanMembers.length : 0;
+
+    // Drop Stats
+    const itemStats = {};
+    let runsWithRealDrops = 0;
+
+    (clanBossRuns || []).forEach(run => {
+      const realDrops = (run.drops || []).filter(d => {
+        const name = (d.item_name || '').toLowerCase();
+        return !name.includes('silver bar') && !name.includes('gold bar') && !name.includes('bar');
+      });
+      if (realDrops.length > 0) runsWithRealDrops++;
+
+      realDrops.forEach(d => {
+        if (!itemStats[d.item_name]) itemStats[d.item_name] = 0;
+        itemStats[d.item_name] += (parseInt(d.quantity) || 1);
+      });
+    });
+
+    const dropChance = (clanBossRuns || []).length > 0 ? ((runsWithRealDrops / (clanBossRuns || []).length) * 100).toFixed(1) : "0.0";
+    const totalDropsCount = Object.values(itemStats).reduce((a, b) => a + b, 0);
+    const dropData = Object.entries(itemStats).map(([name, count]) => ({
+      name,
+      value: count,
+      percentage: totalDropsCount > 0 ? ((count / totalDropsCount) * 100).toFixed(1) : 0
+    })).sort((a, b) => b.value - a.value);
+
+    // Time Analytics
+    const sortedRuns = [...clanBossRuns].sort((a, b) => new Date(a.run_date) - new Date(b.run_date));
+    let peakDropsDate = null;
+    let maxDropsDay = 0;
+    const dayStats = {};
+
+    let longestDrySpell = 0;
+    let drySpellRange = { start: null, end: null };
+    let lastDropDate = null;
+
+    sortedRuns.forEach(run => {
+      const d = new Date(run.run_date).toLocaleDateString('tr-TR');
+      const dropCount = (run.drops || []).length;
+      dayStats[d] = (dayStats[d] || 0) + dropCount;
+      if (dayStats[d] > maxDropsDay) {
+        maxDropsDay = dayStats[d];
+        peakDropsDate = d;
+      }
+
+      if (dropCount > 0) {
+        if (lastDropDate) {
+          const diff = (new Date(run.run_date) - lastDropDate) / (1000 * 60 * 60 * 24);
+          if (diff > longestDrySpell) {
+            longestDrySpell = diff;
+            drySpellRange = { start: lastDropDate.toLocaleDateString('tr-TR'), end: d };
+          }
+        }
+        lastDropDate = new Date(run.run_date);
+      }
+    });
+
+    // Economy Growth (Cumulative)
+    let cumulative = 0;
+    const growthData = sortedRuns.map(run => {
+      cumulative += parseFloat(run.total_sold_amount || 0);
+      return {
+        date: new Date(run.run_date).toLocaleDateString('tr-TR', { month: 'short', day: 'numeric' }),
+        total: cumulative
+      };
+    });
+
+    const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+    return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {/* Charts Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Economy Growth Chart */}
+          <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 flex flex-col h-[400px] shadow-xl">
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+              <TrendingUp size={20} className="text-emerald-500" />
+              Klan Ekonomisi Büyüme Oranı
+            </h3>
+            <div className="flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={growthData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                  <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
+                  <ChartTooltip
+                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
+                    itemStyle={{ color: '#10b981', fontWeight: 'bold' }}
+                  />
+                  <Bar dataKey="total" fill="#10b981" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Drop Distribution Chart */}
+          <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 flex flex-col h-[400px] shadow-xl">
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+              <PieIcon size={20} className="text-blue-500" />
+              Drop Dağılım Yüzdeleri
+            </h3>
+            <div className="flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={dropData.slice(0, 6)}
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {dropData.slice(0, 6).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip
+                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
+                  />
+                  <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-xl group hover:border-emerald-500/30 transition-all">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 bg-emerald-600/20 rounded-lg flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
+                <Wallet size={18} />
+              </div>
+              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Toplam Gelir</span>
+            </div>
+            <div className="text-2xl font-black text-white font-mono">{totalRevenue.toLocaleString('tr-TR')} <span className="text-emerald-500 text-xs">G</span></div>
+          </div>
+
+          <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-xl group hover:border-blue-500/30 transition-all">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 bg-blue-600/20 rounded-lg flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+                <TrendingUp size={18} />
+              </div>
+              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Drop Şansı</span>
+            </div>
+            <div className="text-2xl font-black text-white font-mono">%{dropChance}</div>
+          </div>
+
+          <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-xl group hover:border-indigo-500/30 transition-all">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 bg-indigo-600/20 rounded-lg flex items-center justify-center text-indigo-500 group-hover:scale-110 transition-transform">
+                <UserCheck size={18} />
+              </div>
+              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Toplam Payout</span>
+            </div>
+            <div className="text-2xl font-black text-white font-mono">{totalPaid.toLocaleString('tr-TR')} <span className="text-indigo-500 text-xs">G</span></div>
+          </div>
+
+          <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-xl group hover:border-red-500/30 transition-all">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 bg-red-600/20 rounded-lg flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
+                <AlertCircle size={18} />
+              </div>
+              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Kalan Borç</span>
+            </div>
+            <div className="text-2xl font-black text-white font-mono">{totalPending.toLocaleString('tr-TR')} <span className="text-red-500 text-xs">G</span></div>
+          </div>
+        </div>
+
+        {/* Tables Row */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {/* Top Earners */}
+          <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 shadow-xl">
+            <h3 className="text-white font-bold mb-6 flex items-center gap-2 uppercase italic tracking-tighter">
+              <Crown size={20} className="text-yellow-500" />
+              En Çok Kazananlar
+            </h3>
+            <div className="space-y-3">
+              {topEarners.length > 0 ? topEarners.map((e, idx) => (
+                <div key={e.id} className="flex justify-between items-center p-3 bg-gray-900/50 rounded-xl border border-gray-700/50 hover:bg-gray-700/30 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-black text-gray-400">
+                      {idx + 1}
+                    </div>
+                    <span className="text-white font-bold">{e.name}</span>
+                  </div>
+                  <span className="text-yellow-500 font-mono font-black">{e.earnings.toLocaleString('tr-TR')} G</span>
+                </div>
+              )) : (
+                <div className="text-center py-8 text-gray-600 italic text-sm">Veri bulunmuyor.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Most Active */}
+          <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 shadow-xl">
+            <h3 className="text-white font-bold mb-6 flex items-center gap-2 uppercase italic tracking-tighter">
+              <Users size={20} className="text-indigo-500" />
+              En Aktif Oyuncular
+            </h3>
+            <div className="space-y-3">
+              {topParticipants.length > 0 ? topParticipants.map((p, idx) => (
+                <div key={p.id} className="flex justify-between items-center p-3 bg-gray-900/50 rounded-xl border border-gray-700/50 hover:bg-gray-700/30 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-black text-gray-400">
+                      {idx + 1}
+                    </div>
+                    <span className="text-white font-bold">{p.name}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-gray-500 text-xs font-bold uppercase">Ort. Katkı: <span className="text-white">{(p.earnings / (p.runs || 1)).toFixed(0)}</span></span>
+                    <span className="bg-indigo-600/20 text-indigo-400 px-2 py-0.5 rounded text-[10px] font-black uppercase">{p.runs} RUN</span>
+                  </div>
+                </div>
+              )) : (
+                <div className="text-center py-8 text-gray-600 italic text-sm">Veri bulunmuyor.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Highlights & Time Analysis */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6">
+          <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 shadow-xl">
+            <h3 className="text-white font-bold mb-6 uppercase italic tracking-tighter flex items-center gap-2">
+              <Calendar size={18} className="text-gray-500" />
+              Zaman Analizleri
+            </h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center p-4 bg-gray-900/40 rounded-xl border border-gray-700/30">
+                <span className="text-sm text-gray-400 font-bold uppercase tracking-wider">En Yoğun Drop Dönemi</span>
+                <span className="text-sm text-white font-black">{peakDropsDate || '-'}</span>
+              </div>
+              <div className="flex flex-col gap-2 p-4 bg-gray-900/40 rounded-xl border border-gray-700/30">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-400 font-bold uppercase tracking-wider">En Uzun Dry Spell</span>
+                  <span className="text-sm text-red-400 font-black">{longestDrySpell > 0 ? `${longestDrySpell.toFixed(0)} Gün` : '-'}</span>
+                </div>
+                {drySpellRange.start && (
+                  <div className="text-[10px] text-gray-600 text-right uppercase font-bold">({drySpellRange.start} - {drySpellRange.end})</div>
+                )}
+              </div>
+              <div className="flex justify-between items-center p-4 bg-gray-900/40 rounded-xl border border-gray-700/30">
+                <span className="text-sm text-gray-400 font-bold uppercase tracking-wider">Genel Drop Şansı</span>
+                <span className="text-sm text-blue-400 font-black">%{dropChance}</span>
+              </div>
+              <div className="flex justify-between items-center p-4 bg-gray-900/40 rounded-xl border border-gray-700/30">
+                <span className="text-sm text-gray-400 font-bold uppercase tracking-wider">Oyuncu Başı Ort. Katkı</span>
+                <span className="text-sm text-emerald-400 font-black">{avgContribution.toLocaleString('tr-TR')} G</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 shadow-xl h-[260px] flex flex-col">
+            <h3 className="text-white font-bold mb-6 uppercase italic tracking-tighter flex items-center gap-2">
+              <Tag size={18} className="text-yellow-500" />
+              Değerli Drop İstatistikleri
+            </h3>
+            <div className="flex-1 space-y-3 overflow-y-auto pr-2 no-scrollbar">
+              {dropData.length > 0 ? dropData.slice(0, 10).map((d, i) => (
+                <div key={i} className="flex justify-between items-center text-sm p-2 hover:bg-gray-700/20 rounded transition-colors border-b border-gray-700/30 last:border-0">
+                  <span className="text-gray-400 flex items-center gap-2 font-bold">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
+                    {d.name}
+                  </span>
+                  <div className="flex gap-4 items-center">
+                    <span className="text-gray-600 font-black text-[10px]">%{d.percentage}</span>
+                    <span className="text-white font-black">{d.value} ADET</span>
+                  </div>
+                </div>
+              )) : (
+                <div className="text-center py-8 text-gray-600 italic text-sm">Drop verisi bulunmuyor.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Dashboard / Yönetim Görünümü
   return (
@@ -764,6 +1269,16 @@ const ClanPage = ({ userData, uid, showNotification }) => {
             <MessageSquare size={18} />
             Clan Mesajları
           </button>
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-all whitespace-nowrap ${activeTab === 'reports'
+              ? 'bg-emerald-600 text-white shadow-lg'
+              : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+              }`}
+          >
+            <BarChart2 size={18} />
+            Rapor
+          </button>
         </div>
 
         {activeTab === 'members' && (
@@ -801,7 +1316,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                               {member.nickname || member.display_name || member.username}
                               {member.user_id === uid && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">SİZ</span>}
                             </div>
-                            <div className="text-xs text-gray-500">@{member.nickname || member.username}</div>
+                            <div className="text-xs text-gray-500">@{member.username}</div>
                           </td>
                           <td className="px-6 py-4">
                             <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${member.role === 'leader' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-gray-900/50 text-gray-400'
@@ -866,19 +1381,22 @@ const ClanPage = ({ userData, uid, showNotification }) => {
               </div>
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-center">
                 <div className="text-2xl font-bold text-green-500">
-                  {clanBossRuns.reduce((sum, run) => sum + (run.participant_count || 0), 0)}
+                  {clanBossRuns.reduce((sum, run) => sum + parseInt(run.participant_count || 0), 0)}
                 </div>
                 <div className="text-sm text-gray-400">Toplam Katılımcı</div>
               </div>
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-center">
                 <div className="text-2xl font-bold text-blue-500">
-                  {clanBossRuns.reduce((sum, run) => sum + (run.drop_count || 0), 0)}
+                  {clanBossRuns.reduce((sum, run) => sum + parseInt(run.drop_count || 0), 0)}
                 </div>
                 <div className="text-sm text-gray-400">Toplam Drop</div>
               </div>
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 text-center">
                 <div className="text-2xl font-bold text-yellow-500">
-                  {clanBossRuns.reduce((sum, run) => sum + (run.paid_count || 0), 0)}
+                  {clanBossRuns.reduce((sum, run) => {
+                    // Sadece katılımcı sayısı paylaşılan (is_paid=true olanların sayısı)
+                    return sum + parseInt(run.paid_count || 0);
+                  }, 0)}
                 </div>
                 <div className="text-sm text-gray-400">Ödenen Katılım</div>
               </div>
@@ -902,6 +1420,25 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                       main_character: creator.main_character || 'Bilinmeyen'
                     }]);
                   }
+
+                  // Barları başlangıçta ekle (Görsel olarak)
+                  const barItems = [
+                    { name: 'Silver Bar', search: 'silver bar' },
+                    { name: 'Gold Bar', search: 'gold bar' }
+                  ];
+
+                  const initialDrops = [];
+                  barItems.forEach(bar => {
+                    const matchedItem = items.find(i => i.name.toLowerCase().includes(bar.search));
+                    initialDrops.push({
+                      item_id: matchedItem ? matchedItem.id : null,
+                      item_name: matchedItem ? matchedItem.name : bar.name,
+                      quantity: 1,
+                      isGuaranteed: true
+                    });
+                  });
+                  setDrops(initialDrops);
+
                   setShowCreateRunModal(true);
                 }}
                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-bold transition-all shadow-lg"
@@ -909,6 +1446,53 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                 <Plus size={16} />
                 Yeni Run Ekle
               </button>
+            </div>
+
+            {/* Boss Filters Bar */}
+            <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 mb-6 flex flex-wrap gap-4 items-end shadow-inner">
+              <div className="flex-1 min-w-[150px]">
+                <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-widest">İtem Ara</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                  <input
+                    type="text"
+                    placeholder="İtem adı..."
+                    value={bossFilters.itemName}
+                    onChange={(e) => setBossFilters(prev => ({ ...prev, itemName: e.target.value }))}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-9 pr-4 text-sm text-white focus:border-red-500/50 outline-none transition-colors"
+                  />
+                </div>
+              </div>
+              <div className="flex-1 min-w-[150px]">
+                <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-widest">Oyuncu Ara</label>
+                <div className="relative">
+                  <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Oyuncu adı..."
+                    value={bossFilters.playerName}
+                    onChange={(e) => setBossFilters(prev => ({ ...prev, playerName: e.target.value }))}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-9 pr-4 text-sm text-white focus:border-red-500/50 outline-none transition-colors"
+                  />
+                </div>
+              </div>
+              <div className="w-full md:w-auto">
+                <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-widest">Tarih</label>
+                <input
+                  type="date"
+                  value={bossFilters.date}
+                  onChange={(e) => setBossFilters(prev => ({ ...prev, date: e.target.value }))}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 px-4 text-sm text-white focus:border-red-500/50 outline-none transition-colors"
+                />
+              </div>
+              {(bossFilters.itemName || bossFilters.playerName || bossFilters.date) && (
+                <button
+                  onClick={() => setBossFilters({ itemName: '', playerName: '', date: '' })}
+                  className="text-gray-500 hover:text-white text-xs pb-2 underline transition-colors font-bold uppercase tracking-tighter"
+                >
+                  Sıfırla
+                </button>
+              )}
             </div>
 
             {/* Runs List */}
@@ -941,39 +1525,53 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                   </button>
                 </div>
               ) : (
-                clanBossRuns.map(run => (
+                filteredBossRuns.map(run => (
                   <div
                     key={run.id}
-                    className="bg-gray-800 rounded-xl border border-gray-700 p-4 hover:border-red-500/50 transition-all cursor-pointer"
+                    className="bg-gray-800 rounded-xl border border-gray-700 p-4 hover:border-red-500/50 transition-all cursor-pointer group"
                     onClick={() => handleViewRunDetails(run)}
                   >
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h3 className="font-bold text-white">{run.boss_name}</h3>
+                        <h3 className="font-bold text-white group-hover:text-red-400 transition-colors uppercase italic">{run.boss_name}</h3>
                         <div className="text-sm text-gray-400 flex items-center gap-1 mt-1">
                           <Calendar size={14} />
                           {new Date(run.run_date).toLocaleDateString('tr-TR')}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-xs text-gray-500">Katılımcı</div>
+                        <div className="text-[10px] text-gray-500 uppercase font-black">Katılımcı</div>
                         <div className="font-bold text-blue-500">{run.participant_count || 0}</div>
                       </div>
                     </div>
-                    
+
                     <div className="flex justify-between text-sm mb-3">
                       <div className="flex items-center gap-1 text-gray-400">
-                        <Coins size={14} />
-                        Drop: {run.drop_count || 0}
+                        <Coins size={14} className="text-yellow-600" />
+                        Drop: <span className="text-white font-mono ml-1">{run.drop_count || 0}</span>
                       </div>
                       <div className="flex items-center gap-1 text-gray-400">
-                        <UserCheck size={14} />
-                        Ödenen: {run.paid_count || 0}
+                        <UserCheck size={14} className="text-green-600" />
+                        Ödenen: <span className="text-white font-mono ml-1">{run.paid_count || 0}</span>
                       </div>
                     </div>
-                    
-                    <div className="text-xs text-gray-500 border-t border-gray-700 pt-2">
-                      Oluşturan: {run.creator_main_character || run.creator_nickname || 'Bilinmeyen'}
+
+                    {/* Items Found Display */}
+                    {run.drops && run.drops.length > 0 && (
+                      <div className="mb-3 pt-2 border-t border-gray-700/50">
+                        <div className="flex flex-wrap gap-1">
+                          {run.drops.map((drop, idx) => (
+                            <span key={idx} className="bg-yellow-900/20 text-yellow-500 border border-yellow-800/30 px-2 py-0.5 rounded text-[10px] font-bold">
+                              {drop.item_name} {drop.quantity > 1 ? `x${drop.quantity}` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="text-[10px] text-gray-500 border-t border-gray-700/30 pt-2 flex justify-between uppercase">
+                      <span>Kurucu: <span className="text-gray-400">{run.creator_main_character || run.creator_nickname || 'Bilinmeyen'}</span></span>
+                      {run.created_at && <span>{new Date(run.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                     </div>
                   </div>
                 ))
@@ -983,10 +1581,299 @@ const ClanPage = ({ userData, uid, showNotification }) => {
         )}
 
         {activeTab === 'bank' && (
-          <div className="bg-gray-800 rounded-2xl border border-gray-700 p-20 text-center shadow-xl">
-            <Database size={64} className="mx-auto text-yellow-500 mb-6 opacity-20" />
-            <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter mb-2">Clan Bankası</h3>
-            <p className="text-gray-500 max-w-md mx-auto">Klan ortak kasası, item paylaşımı ve bakiye yönetimi çok yakında aktif edilecek.</p>
+          <div className="space-y-6">
+            {/* Bank Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 flex items-center gap-4">
+                <div className="w-12 h-12 bg-yellow-600/20 rounded-lg flex items-center justify-center text-yellow-500">
+                  <Coins size={24} />
+                </div>
+                <div>
+                  <div className="text-sm text-gray-400">Klan Bakiyesi</div>
+                  <div className="text-xl font-black text-white font-mono">
+                    {Number(bankData.balance).toLocaleString('tr-TR')} <span className="text-yellow-500 text-sm">G</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-600/20 rounded-lg flex items-center justify-center text-blue-500">
+                  <Database size={24} />
+                </div>
+                <div>
+                  <div className="text-sm text-gray-400">Bankadaki İtemler</div>
+                  <div className="text-xl font-black text-white font-mono">{bankData.items?.length || 0}</div>
+                </div>
+              </div>
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 flex items-center gap-4">
+                <div className="w-12 h-12 bg-green-600/20 rounded-lg flex items-center justify-center text-green-500">
+                  <UserCheck size={24} />
+                </div>
+                <div>
+                  <div className="text-sm text-gray-400">Bekleyen Ödemeler</div>
+                  <div className="text-xl font-black text-white font-mono">
+                    {clanBossRuns.reduce((sum, run) => {
+                      // Henüz tam ödeme almamış (is_paid = false) katılımcı sayısını hesapla
+                      return sum + (parseInt(run.participant_count || 0) - parseInt(run.paid_count || 0));
+                    }, 0)}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 flex items-center gap-4">
+                <div className="w-12 h-12 bg-purple-600/20 rounded-lg flex items-center justify-center text-purple-500">
+                  <MessageSquare size={24} />
+                </div>
+                <div>
+                  <div className="text-sm text-gray-400">Son İşlemler</div>
+                  <div className="text-xl font-black text-white font-mono">{transactions.length}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* View Toggle and Search */}
+            <div className="flex flex-col xl:flex-row justify-between items-center gap-4 bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+              <div className="flex items-center gap-4 w-full xl:w-auto">
+                <div className="flex bg-gray-900 p-1 rounded-lg">
+                  <button
+                    onClick={() => setBankView('list')}
+                    className={`px-4 py-1.5 rounded-md text-xs font-bold transition ${bankView === 'list' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Liste Görünümü
+                  </button>
+                  <button
+                    onClick={() => setBankView('grid')}
+                    className={`px-4 py-1.5 rounded-md text-xs font-bold transition ${bankView === 'grid' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Banka Görünümü
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowSoldItemsModal(true)}
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 border border-gray-600 transition-all text-xs font-bold shadow"
+                  >
+                    <Tag className="text-yellow-400" size={14} />
+                    Satılan İtemler
+                  </button>
+                  {(userData?.clanRole === 'leader' || userData?.role === 'owner') && (
+                    <button
+                      onClick={() => setShowManualItemModal(true)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 border border-blue-400 transition-all text-xs font-bold shadow"
+                    >
+                      <Plus size={14} />
+                      Manuel İtem Ekle
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="relative w-full xl:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                <input
+                  type="text"
+                  placeholder="Banka içinde ara..."
+                  value={bankSearch}
+                  onChange={(e) => setBankSearch(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 pl-9 pr-4 text-xs text-white focus:border-yellow-500/50 outline-none transition"
+                />
+              </div>
+            </div>
+
+            {/* Bank Content */}
+            {bankView === 'list' ? (
+              <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-900/30 text-left text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                        <th className="px-6 py-4 border-b border-gray-700/50">İtem Adı</th>
+                        <th className="px-6 py-4 border-b border-gray-700/50">Miktar</th>
+                        <th className="px-6 py-4 border-b border-gray-700/50">Kazanılma Tarihi</th>
+                        <th className="px-6 py-4 border-b border-gray-700/50">Asıl Sahibi</th>
+                        <th className="px-6 py-4 border-b border-gray-700/50 text-right">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700/50">
+                      {(bankData.items || [])
+                        .filter(item => item.item_name.toLowerCase().includes(bankSearch.toLowerCase()))
+                        .map(item => (
+                          <tr key={item.id} className="hover:bg-gray-700/30 transition group">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded bg-gray-900 border border-gray-700 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                  <img
+                                    src={getItemIcon(item.item_name)}
+                                    alt=""
+                                    className="w-full h-full object-contain"
+                                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
+                                  />
+                                  <Database size={16} className="text-gray-700 hidden" />
+                                </div>
+                                <div>
+                                  <div
+                                    className="font-bold text-white group-hover:text-yellow-400 transition-colors cursor-help inline-block"
+                                    onMouseEnter={(e) => { if (showTooltip) showTooltip(item, e); }}
+                                    onMouseMove={(e) => { if (showTooltip) showTooltip(item, e); }}
+                                    onMouseLeave={() => { if (hideTooltip) hideTooltip(); }}
+                                  >
+                                    {item.item_name}
+                                  </div>
+                                  {item.run_id && <div className="text-[10px] text-gray-500">RUN: {item.run_id}</div>}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-yellow-500 font-bold">x{item.quantity}</span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              {new Date(item.timestamp).toLocaleDateString('tr-TR')}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-400 font-mono">
+                              {item.user_id ? `@${item.user_id.substring(0, 8)}...` : '-'}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              {item.run_id ? (
+                                <button
+                                  onClick={() => handleViewRunDetails({ id: item.run_id })}
+                                  className="text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs font-bold transition"
+                                >
+                                  Detay
+                                </button>
+                              ) : (
+                                <span className="text-gray-600 text-[10px] uppercase font-bold">Manuel Ekleme</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      {bankData.items?.length === 0 && (
+                        <tr>
+                          <td colSpan="5" className="px-6 py-20 text-center text-gray-500 italic">Banka şu an boş.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Grid View */}
+                <div className="flex justify-center">
+                  <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-2xl">
+                    <div className="grid grid-cols-8 gap-1">
+                      {Array.from({ length: 32 }).map((_, index) => {
+                        const globalIndex = (bankPage - 1) * 32 + index;
+                        const filteredItems = (bankData.items || []).filter(i => i.item_name.toLowerCase().includes(bankSearch.toLowerCase()));
+                        const item = filteredItems[globalIndex];
+
+                        return (
+                          <div
+                            key={index}
+                            className={`w-16 h-16 rounded border border-gray-600/50 flex items-center justify-center relative transition-all shadow-inner overflow-hidden ${item ? 'bg-gray-900 border-yellow-500/30 hover:bg-gray-800 cursor-pointer hover:border-yellow-500 hover:scale-[1.1] hover:shadow-[0_0_15px_rgba(234,179,8,0.4)] z-10' : 'bg-gray-900/40'
+                              }`}
+                            onClick={() => {
+                              if (item) {
+                                if (item.run_id) {
+                                  handleViewRunDetails({ id: item.run_id });
+                                } else {
+                                  showNotification(`${item.item_name} - Adet: ${item.quantity}`, 'info');
+                                }
+                              }
+                            }}
+                            onMouseEnter={(e) => {
+                              if (item && showTooltip) showTooltip(item, e);
+                            }}
+                            onMouseMove={(e) => {
+                              if (item && showTooltip) showTooltip(item, e);
+                            }}
+                            onMouseLeave={() => {
+                              if (hideTooltip) hideTooltip();
+                            }}
+                          >
+                            {item ? (
+                              <>
+                                <div className="w-full h-full flex items-center justify-center p-1.5">
+                                  <img
+                                    src={getItemIcon(item.item_name)}
+                                    alt={item.item_name}
+                                    className="w-full h-full object-contain drop-shadow-[0_0_5px_rgba(0,0,0,0.5)]"
+                                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
+                                  />
+                                  <Database size={32} className="text-yellow-500/50 hidden" />
+                                </div>
+                                <div className="absolute top-1 right-1 text-[11px] font-black text-yellow-500 leading-none drop-shadow-[0_1.2px_1.2px_rgba(0,0,0,0.8)] px-1 py-0.5 rounded-sm bg-black/40">
+                                  {item.quantity}
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grid Pagination */}
+                <div className="flex justify-center items-center gap-4">
+                  <button
+                    disabled={bankPage === 1}
+                    onClick={() => setBankPage(p => p - 1)}
+                    className="p-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-400 hover:text-white disabled:opacity-20 transition"
+                  >
+                    <ArrowRight className="rotate-180" size={16} />
+                  </button>
+                  <div className="flex gap-1">
+                    {Array.from({ length: 10 }).map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setBankPage(i + 1)}
+                        className={`w-8 h-8 rounded text-xs font-black transition ${bankPage === i + 1 ? 'bg-yellow-600 text-white' : 'bg-gray-800 text-gray-500 hover:text-gray-300'}`}
+                      >
+                        {i + 1}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    disabled={bankPage === 10}
+                    onClick={() => setBankPage(p => p + 1)}
+                    className="p-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-400 hover:text-white disabled:opacity-20 transition"
+                  >
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Transactions Log Section */}
+            <div className="mt-8">
+              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <Calendar size={16} />
+                Banka İşlem Geçmişi
+              </h3>
+              <div className="bg-gray-800/30 rounded-xl border border-gray-700/50 overflow-hidden">
+                <div className="max-h-60 overflow-y-auto no-scrollbar">
+                  {transactions.length === 0 ? (
+                    <div className="p-10 text-center text-gray-600 text-sm">Henüz bir işlem kaydı bulunmuyor.</div>
+                  ) : (
+                    <div className="divide-y divide-gray-700/30">
+                      {transactions.map(t => (
+                        <div key={t.id} className="p-4 flex justify-between items-center hover:bg-gray-800/30 transition">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-2 h-2 rounded-full ${t.amount < 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+                            <div>
+                              <div className="text-xs font-bold text-white uppercase">{t.description}</div>
+                              <div className="text-[10px] text-gray-500">{new Date(t.created_at).toLocaleString('tr-TR')} - Yapan: {t.performer_name || 'Bilinmeyen'}</div>
+                            </div>
+                          </div>
+                          <div className={`font-mono font-black ${t.amount < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                            {t.amount > 0 ? '+' : ''}{t.amount} G
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1126,6 +2013,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
             </div>
           </div>
         )}
+        {activeTab === 'reports' && renderReportsTab()}
 
         {/* Member Add Modal */}
         {showAddMemberModal && (
@@ -1273,11 +2161,11 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                   <Sword className="text-red-500" size={20} />
                   Yeni Klan Boss Run
                 </h3>
-                <button 
+                <button
                   onClick={() => {
                     setShowCreateRunModal(false);
                     resetRunForm();
-                  }} 
+                  }}
                   className="text-gray-400 hover:text-white transition"
                 >
                   <X size={24} />
@@ -1309,8 +2197,36 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                   </div>
                 </div>
 
+                {/* Guaranteed Drops Section (Silver & Gold Bars) */}
+                <div className="bg-blue-900/20 rounded-xl p-4 border border-blue-500/30 mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-xs font-black text-blue-400 uppercase tracking-widest">Garantili Droplar (%100)</label>
+                    <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded font-bold uppercase">Otomatik Nakite Çevrilir</span>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="flex-1 flex items-center gap-3 bg-gray-900/60 p-2 rounded-lg border border-gray-700/50">
+                      <div className="w-8 h-8 rounded bg-gray-800 flex items-center justify-center overflow-hidden">
+                        <img src={getItemIcon('Silver Bar')} alt="" className="w-6 h-6 object-contain" onError={(e) => e.target.style.display = 'none'} />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-white">Silver Bar</div>
+                        <div className="text-[10px] text-gray-500 font-bold uppercase">10.000.000 G</div>
+                      </div>
+                    </div>
+                    <div className="flex-1 flex items-center gap-3 bg-gray-900/60 p-2 rounded-lg border border-gray-700/50">
+                      <div className="w-8 h-8 rounded bg-gray-800 flex items-center justify-center overflow-hidden">
+                        <img src={getItemIcon('Gold Bar')} alt="" className="w-6 h-6 object-contain" onError={(e) => e.target.style.display = 'none'} />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-white">Gold Bar</div>
+                        <div className="text-[10px] text-gray-500 font-bold uppercase">100.000.000 G</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Participants Section */}
-                <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700">
+                <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 mb-6">
                   <div className="flex justify-between items-center mb-3">
                     <label className="block text-sm font-medium text-gray-400">Katılımcılar ({selectedParticipants.length})</label>
                     <button
@@ -1321,7 +2237,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                       Katılımcı Ekle
                     </button>
                   </div>
-                  
+
                   <div className="space-y-2 max-h-40 overflow-y-auto">
                     {selectedParticipants.map((participant, index) => (
                       <div key={participant.user_id} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
@@ -1360,7 +2276,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                       Ekle
                     </button>
                   </div>
-                  
+
                   {/* Add New Drop */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                     <div className="md:col-span-2">
@@ -1421,17 +2337,27 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                   {/* Drops List */}
                   <div className="space-y-2 max-h-40 overflow-y-auto">
                     {drops.map((drop, index) => (
-                      <div key={index} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
-                        <div>
-                          <div className="font-medium text-white">{drop.item_name}</div>
-                          <div className="text-sm text-gray-400">Adet: {drop.quantity}</div>
+                      <div key={index} className={`flex justify-between items-center bg-gray-800 p-3 rounded-lg border-l-4 ${drop.isGuaranteed ? 'border-blue-500 bg-blue-900/10' : 'border-green-500'}`}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded bg-gray-900 flex items-center justify-center">
+                            <img src={getItemIcon(drop.item_name)} alt="" className="w-5 h-5 object-contain" onError={(e) => e.target.style.display = 'none'} />
+                          </div>
+                          <div>
+                            <div className="font-medium text-white flex items-center gap-2">
+                              {drop.item_name}
+                              {drop.isGuaranteed && <span className="text-[8px] bg-blue-500/30 text-blue-400 px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">Garantili</span>}
+                            </div>
+                            <div className="text-[10px] text-gray-500 font-bold uppercase">Adet: <span className="text-gray-300">{drop.quantity}</span></div>
+                          </div>
                         </div>
-                        <button
-                          onClick={() => removeDrop(index)}
-                          className="text-red-500 hover:text-red-400 p-1"
-                        >
-                          <X size={16} />
-                        </button>
+                        {!drop.isGuaranteed && (
+                          <button
+                            onClick={() => removeDrop(index)}
+                            className="text-gray-600 hover:text-red-500 transition-colors p-2"
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
                       </div>
                     ))}
                     {drops.length === 0 && (
@@ -1445,7 +2371,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
 
               {/* Modal Footer */}
               <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex gap-3">
-                <button 
+                <button
                   onClick={() => {
                     setShowCreateRunModal(false);
                     resetRunForm();
@@ -1454,7 +2380,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                 >
                   İptal
                 </button>
-                <button 
+                <button
                   onClick={handleCreateRun}
                   disabled={!runDate}
                   className={`flex-1 px-4 py-3 rounded-lg font-bold transition shadow-lg ${runDate
@@ -1479,8 +2405,8 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                   <Sword className="text-red-500" size={20} />
                   {selectedRun.boss_name} - Detaylar
                 </h3>
-                <button 
-                  onClick={() => setShowRunDetailModal(false)} 
+                <button
+                  onClick={() => setShowRunDetailModal(false)}
                   className="text-gray-400 hover:text-white transition"
                 >
                   <X size={24} />
@@ -1507,84 +2433,111 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                 {/* Participants Section */}
                 <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700">
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-bold text-white">Katılımcılar ({selectedRun.participants?.length || 0})</h4>
+                    <h4 className="font-bold text-white uppercase tracking-tighter italic">Katılımcılar ({selectedRun.participants?.length || 0})</h4>
                     <div className="flex gap-2">
-                      <div className="text-sm text-gray-400">
-                        Ödenen: {selectedRun.participants?.filter(p => p.is_paid).length || 0}
+                      <div className="text-[10px] text-gray-500 font-bold uppercase">
+                        Ödeme Bekleyen: {selectedRun.participants?.filter(p => {
+                          const share = Math.floor((selectedRun.total_sold_amount || 0) / (selectedRun.participants?.length || 1));
+                          const remaining = share - parseFloat(p.paid_amount || 0);
+                          return remaining > 0;
+                        }).length || 0}
                       </div>
-                      <div className="text-sm text-gray-400">
-                        Bekleyen: {selectedRun.participants?.filter(p => !p.is_paid).length || 0}
+                      <div className="text-[10px] font-black text-yellow-500 ml-2 border-l border-gray-700 pl-2 uppercase">
+                        Toplam Satış: {(selectedRun.total_sold_amount || 0).toLocaleString('tr-TR')} G
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {selectedRun.participants?.map(participant => (
-                      <div key={participant.user_id} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
-                        <div>
-                          <div className="font-bold text-lg text-white">
-                            {participant.user_id === uid 
-                              ? (userData.profile?.mainCharacter || participant.nickname || participant.main_character || participant.username)
-                              : (participant.nickname || participant.main_character || participant.username)}
+                    {selectedRun.participants?.map(participant => {
+                      const share = Math.floor((selectedRun.total_sold_amount || 0) / (selectedRun.participants?.length || 1));
+                      const paidAmount = parseFloat(participant.paid_amount || 0);
+                      const remaining = Math.max(0, share - paidAmount);
+
+                      let statusText = 'Ödeme Bekliyor';
+                      let statusColor = 'bg-yellow-900/30 text-yellow-400';
+
+                      if (share > 0) {
+                        if (remaining <= 0) {
+                          if (selectedRun.has_unsold_items) {
+                            statusText = 'Satış Bekliyor';
+                            statusColor = 'bg-indigo-900/40 text-indigo-400';
+                          } else {
+                            statusText = 'Tamamlandı';
+                            statusColor = 'bg-green-900/40 text-green-400';
+                          }
+                        } else if (paidAmount > 0) {
+                          statusText = 'Kısmi Ödendi';
+                          statusColor = 'bg-blue-900/40 text-blue-400';
+                        }
+                      } else if (selectedRun.has_unsold_items) {
+                        statusText = 'Satış Bekleniyor';
+                        statusColor = 'bg-indigo-900/20 text-indigo-300';
+                      }
+
+                      return (
+                        <div key={participant.user_id} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg border border-gray-700/50">
+                          <div className="flex-1">
+                            <div className="font-bold text-lg text-white">
+                              {participant.user_id === uid
+                                ? (userData.profile?.mainCharacter || participant.nickname || participant.main_character || participant.username)
+                                : (participant.nickname || participant.main_character || participant.username)}
+                            </div>
+                            {selectedRun.total_sold_amount > 0 && (
+                              <div className="grid grid-cols-3 gap-2 mt-2">
+                                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                                  Hak Edilen
+                                  <div className="text-xs text-green-500 font-black">{share.toLocaleString('tr-TR')}</div>
+                                </div>
+                                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                                  Ödenen
+                                  <div className="text-xs text-blue-500 font-black">{paidAmount.toLocaleString('tr-TR')}</div>
+                                </div>
+                                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                                  Kalan
+                                  <div className="text-xs text-yellow-500 font-black">{remaining.toLocaleString('tr-TR')}</div>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div className="text-xs text-gray-500">
-                            Katılım: {new Date(participant.joined_at).toLocaleDateString('tr-TR')}
+                          <div className="flex items-center gap-2">
+                            {(selectedRun.created_by === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
+                              <>
+                                {remaining > 0 ? (
+                                  <button
+                                    onClick={() => {
+                                      setPaymentTarget(participant);
+                                      setPaymentAmount(remaining);
+                                      setPaymentDescription(`Run katılım ödemesi: ${selectedRun.boss_name}`);
+                                      setShowPaymentModal(true);
+                                    }}
+                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-bold shadow-lg transition-transform active:scale-95"
+                                  >
+                                    Ödeme Yap
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      if (window.confirm('Son ödemeyi iptal etmek istediğinize emin misiniz?')) {
+                                        handleUpdatePaymentStatus(participant.user_id, false);
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 bg-green-900/30 text-green-400 hover:bg-green-900/50 rounded text-sm font-bold border border-green-500/20"
+                                  >
+                                    {statusText} (İptal)
+                                  </button>
+                                )}
+                              </>
+                            )}
+                            {!(selectedRun.created_by === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
+                              <span className={`px-3 py-1 rounded text-sm font-bold ${statusColor}`}>
+                                {statusText}
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {participant.user_id === uid && selectedRun.created_by === uid && (
-                            <button
-                              onClick={() => handleRemoveSelfFromRun(selectedRun.id)}
-                              className="text-red-500 hover:text-red-400 text-sm flex items-center gap-1 px-2 py-1 bg-red-900/20 rounded"
-                            >
-                              <UserX size={14} />
-                              Run'dan Ayrıl
-                            </button>
-                          )}
-                          {(selectedRun.created_by === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
-                            <>
-                              <button
-                                onClick={() => handleUpdatePaymentStatus(participant.user_id, !participant.is_paid)}
-                                className={`px-3 py-1 rounded text-sm font-bold transition ${participant.is_paid
-                                  ? 'bg-green-900/30 text-green-400 hover:bg-green-900/50'
-                                  : 'bg-yellow-900/30 text-yellow-400 hover:bg-yellow-900/50'
-                                  }`}
-                              >
-                                {participant.is_paid ? 'Ödendi' : 'Ödenmedi'}
-                              </button>
-                              {participant.user_id !== uid && (
-                                <button
-                                  onClick={() => handleRemoveParticipantFromRun(selectedRun.id, participant.user_id)}
-                                  className="text-red-500 hover:text-red-400 text-sm flex items-center gap-1 px-2 py-1 bg-red-900/20 rounded"
-                                  title={`${participant.nickname || participant.username} adlı kullanıcıyı listeden çıkar`}
-                                >
-                                  <UserX size={14} />
-                                  Çıkar
-                                </button>
-                              )}
-                            </>
-                          )}
-                          {!(selectedRun.created_by === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
-                            <span className={`px-3 py-1 rounded text-sm ${
-                              participant.is_paid
-                                ? 'bg-green-900/30 text-green-400'
-                                : 'bg-yellow-900/30 text-yellow-400'
-                              }`}>
-                              {participant.is_paid ? 'Ödendi' : 'Ödenmedi'}
-                            </span>
-                          )}
-                          {participant.is_paid ? (
-                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                              <div className="w-2 h-2 bg-white rounded-full"></div>
-                            </div>
-                          ) : (
-                            <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
-                              <div className="w-2 h-2 bg-white rounded-full"></div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {(!selectedRun.participants || selectedRun.participants.length === 0) && (
                       <div className="text-center py-4 text-gray-500 text-sm">
                         Katılımcı bulunmuyor
@@ -1596,22 +2549,70 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                 {/* Drops Section */}
                 <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700">
                   <h4 className="font-bold text-white mb-3">Droplar ({selectedRun.drops?.length || 0})</h4>
-                  
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {selectedRun.drops?.map((drop, index) => (
-                      <div key={index} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
-                        <div>
-                          <div className="font-medium text-white">{drop.item_name}</div>
-                          <div className="text-sm text-gray-400">Adet: {drop.quantity}</div>
-                          <div className="text-xs text-gray-500">
 
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {selectedRun.drops?.map((drop, index) => {
+                      const isSold = drop.status === 'sold';
+                      const isPartiallySold = drop.status === 'partially_sold';
+                      const isAvailable = drop.status === 'available';
+
+                      // Find bank item for leader/owner to be able to sell
+                      const bankItem = isAvailable && (bankData.items || []).find(bi =>
+                        String(bi.run_id) === String(selectedRun.id) &&
+                        bi.item_name === drop.item_name
+                      );
+
+                      return (
+                        <div key={index} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded bg-gray-900 border border-gray-700 flex items-center justify-center overflow-hidden">
+                              <img
+                                src={getItemIcon(drop.item_name)}
+                                alt=""
+                                className="w-8 h-8 object-contain"
+                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
+                              />
+                              <Database size={20} className="text-gray-700 hidden" />
+                            </div>
+                            <div>
+                              <div
+                                className="font-medium text-white group-hover:text-yellow-400 transition-colors cursor-help"
+                                onMouseEnter={(e) => { if (showTooltip) showTooltip(drop, e); }}
+                                onMouseMove={(e) => { if (showTooltip) showTooltip(drop, e); }}
+                                onMouseLeave={() => { if (hideTooltip) hideTooltip(); }}
+                              >
+                                {drop.item_name}
+                              </div>
+                              <div className="text-sm text-gray-400">Adet: {drop.quantity}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${isSold ? 'bg-gray-700 text-gray-400' :
+                              isPartiallySold ? 'bg-blue-900/30 text-blue-400' :
+                                'bg-green-900/30 text-green-400'
+                              }`}>
+                              {isSold ? 'SATILDI' : isPartiallySold ? 'KISMİ SATILDI' : 'BANKADA'}
+                            </span>
+
+                            {/* Role and Bank Item Check for Sell Button */}
+                            {((selectedClan?.owner_id === uid) ||
+                              (bankData?.role === 'leader' || bankData?.role === 'owner') ||
+                              (clanMembers.find(m => m.user_id === uid)?.role === 'leader')) && bankItem && (
+                                <button
+                                  onClick={() => {
+                                    setItemToSell({ id: bankItem.id, name: drop.item_name, quantity: drop.quantity });
+                                    setSaleQuantity(drop.quantity);
+                                    setShowItemActionModal(true);
+                                  }}
+                                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded text-xs font-bold transition shadow-lg"
+                                >
+                                  Sat
+                                </button>
+                              )}
                           </div>
                         </div>
-                        <div className="text-sm text-gray-400">
-                          {new Date(drop.added_at).toLocaleDateString('tr-TR')}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {(!selectedRun.drops || selectedRun.drops.length === 0) && (
                       <div className="text-center py-4 text-gray-500 text-sm">
                         Drop bulunmuyor
@@ -1625,7 +2626,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
               <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex justify-between gap-3">
                 <div>
                   {(selectedRun.created_by === uid) && (
-                    <button 
+                    <button
                       onClick={() => {
                         if (window.confirm('Bu run\'u silmek istediğinizden emin misiniz?')) {
                           handleDeleteRun(selectedRun.id);
@@ -1638,7 +2639,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                     </button>
                   )}
                 </div>
-                <button 
+                <button
                   onClick={() => setShowRunDetailModal(false)}
                   className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-bold transition"
                 >
@@ -1659,8 +2660,8 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                   <Users className="text-blue-500" size={20} />
                   Katılımcı Seç
                 </h3>
-                <button 
-                  onClick={() => setShowParticipantModal(false)} 
+                <button
+                  onClick={() => setShowParticipantModal(false)}
                   className="text-gray-400 hover:text-white transition"
                 >
                   <X size={24} />
@@ -1675,7 +2676,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                     .map(member => {
                       const isSelected = selectedParticipants.some(p => p.user_id === member.user_id);
                       return (
-                        <div 
+                        <div
                           key={member.user_id}
                           className={`p-4 rounded-lg border cursor-pointer transition-all ${isSelected
                             ? 'bg-blue-600/20 border-blue-500'
@@ -1713,7 +2714,7 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                         </div>
                       );
                     })}
-                  
+
                   {clanMembers.filter(member => member.user_id !== uid).length === 0 && (
                     <div className="text-center py-8 text-gray-500">
                       Diğer klan üyesi bulunmuyor
@@ -1727,11 +2728,127 @@ const ClanPage = ({ userData, uid, showNotification }) => {
                 <div className="text-sm text-gray-400">
                   Seçilen: {selectedParticipants.length} katılımcı
                 </div>
-                <button 
+                <button
                   onClick={() => setShowParticipantModal(false)}
                   className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition"
                 >
                   Tamam
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Item Action (Sell) Modal */}
+        {showItemActionModal && itemToSell && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4 backdrop-blur-sm">
+            <div className="bg-gray-800 w-full max-w-md rounded-2xl border border-gray-700 shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+              <div className="p-6 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
+                <h3 className="text-xl font-bold text-white uppercase italic tracking-tighter">İtem Satışı</h3>
+                <button onClick={() => setShowItemActionModal(false)} className="text-gray-400 hover:text-white transition">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="p-8 space-y-6">
+                <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700 text-center">
+                  <div className="text-sm text-gray-500 mb-1 uppercase font-bold tracking-widest">Satılacak İtem</div>
+                  <div className="text-2xl font-black text-yellow-500 uppercase italic">{itemToSell.name}</div>
+                  <div className="text-sm text-gray-400 mt-1">Mevcut: {itemToSell.quantity} Adet</div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">Satılacak Miktar</label>
+                    <input
+                      type="number"
+                      value={saleQuantity}
+                      onChange={(e) => setSaleQuantity(Math.min(itemToSell.quantity, Math.max(1, parseInt(e.target.value) || 1)))}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-yellow-500 transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">Toplam Satış Tutarı (G)</label>
+                    <input
+                      type="number"
+                      placeholder="Örn: 1000"
+                      value={saleAmount}
+                      onChange={(e) => setSaleAmount(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-yellow-500 transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">Satış Tarihi (Opsiyonel)</label>
+                    <input
+                      type="date"
+                      value={saleDate}
+                      onChange={(e) => setSaleDate(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-yellow-500 transition text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex gap-4">
+                <button onClick={() => setShowItemActionModal(false)} className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition">İptal</button>
+                <button
+                  onClick={handleSellItem}
+                  disabled={!saleAmount}
+                  className="flex-1 px-4 py-3 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white rounded-xl font-black transition shadow-xl"
+                >
+                  SATIŞI ONAYLA
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Payment Modal */}
+        {showPaymentModal && paymentTarget && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4 backdrop-blur-sm">
+            <div className="bg-gray-800 w-full max-w-md rounded-2xl border border-gray-700 shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+              <div className="p-6 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
+                <h3 className="text-xl font-bold text-white uppercase italic tracking-tighter">Ödeme Yap</h3>
+                <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-white transition">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="p-8 space-y-6">
+                <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700 text-center">
+                  <div className="text-sm text-gray-500 mb-1 uppercase font-bold tracking-widest">Alıcı</div>
+                  <div className="text-2xl font-black text-blue-500 uppercase italic">{paymentTarget.nickname || paymentTarget.main_character || paymentTarget.username}</div>
+                  <div className="text-xs text-gray-400 mt-2">Klan Bakiyesi: <span className="text-yellow-500 font-bold">{bankData.balance} G</span></div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">Ödeme Tutarı (G)</label>
+                    <input
+                      type="number"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-blue-500 transition"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-1 italic">* Otomatik hesaplanan kişi başı pay: {(Number(bankData.balance) / (selectedRun.participants?.length || 1)).toFixed(0)} G</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">Açıklama</label>
+                    <textarea
+                      value={paymentDescription}
+                      onChange={(e) => setPaymentDescription(e.target.value)}
+                      placeholder="Örn: Shallow Fever katılım payı"
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-blue-500 transition resize-none text-sm"
+                      rows="3"
+                    ></textarea>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex gap-4">
+                <button onClick={() => setShowPaymentModal(false)} className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition">İptal</button>
+                <button
+                  onClick={handlePayParticipant}
+                  disabled={!paymentAmount || parseFloat(paymentAmount) > Number(bankData.balance)}
+                  className="flex-1 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl font-black transition shadow-xl"
+                >
+                  ÖDEMEYİ YAP
                 </button>
               </div>
             </div>
@@ -1775,8 +2892,172 @@ const ClanPage = ({ userData, uid, showNotification }) => {
           </div>
         )}
       </div>
-    </div>
+      {/* Satılan İtemler Modalı */}
+      {
+        showSoldItemsModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[130] p-4">
+            <div className="bg-gray-800 border border-yellow-500/50 rounded-xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+              <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-800/50">
+                <div className="flex items-center gap-3">
+                  <Tag className="text-yellow-400" size={24} />
+                  <h2 className="text-2xl font-bold text-white tracking-tight uppercase italic">Satılan İtemler</h2>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex bg-gray-900 p-1 rounded-lg">
+                    <button
+                      onClick={() => setSoldItemsView('list')}
+                      className={`px-4 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-2 ${soldItemsView === 'list' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      Liste
+                    </button>
+                    <button
+                      onClick={() => setSoldItemsView('grid')}
+                      className={`px-4 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-2 ${soldItemsView === 'grid' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      Kart
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowSoldItemsModal(false)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 bg-gray-900/20">
+                {soldItems.length === 0 ? (
+                  <div className="text-center py-20 bg-gray-900/50 rounded-xl border border-dashed border-gray-700">
+                    <Tag className="mx-auto mb-4 text-gray-600" size={48} />
+                    <p className="text-gray-500 font-bold uppercase tracking-widest">Henüz satılan item bulunamadı</p>
+                  </div>
+                ) : soldItemsView === 'grid' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {soldItems.map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={async () => {
+                          if (item.run_id) {
+                            try {
+                              const runDetails = await clanBossService.getClanBossRunDetails(item.run_id);
+                              setSelectedRun(runDetails);
+                              setShowRunDetailModal(true);
+                              setShowSoldItemsModal(false);
+                            } catch (error) {
+                              showNotification('Run detayları yüklenemedi.', 'error');
+                            }
+                          }
+                        }}
+                        className="bg-gray-900/50 border border-gray-700 rounded-xl p-4 hover:border-yellow-500/50 transition-all group cursor-pointer hover:bg-gray-800"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="font-bold text-yellow-400 group-hover:scale-105 transition-transform origin-left">
+                            {item.item_name}
+                          </div>
+                          <div className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400 border border-gray-700">
+                            {new Date(item.sold_at).toLocaleDateString('tr-TR')}
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs text-gray-500 uppercase font-bold tracking-tighter">Miktar</span>
+                          <span className="text-sm text-white font-mono">{item.sold_quantity} Adet</span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-500 uppercase font-bold tracking-tighter">Satış Tutarı</span>
+                          <span className="text-sm font-bold text-green-400">
+                            {new Intl.NumberFormat('tr-TR').format(item.sale_amount)} <span className="text-[10px]">COIN</span>
+                          </span>
+                        </div>
+
+                        {item.run_id && (
+                          <div className="mt-3 pt-3 border-t border-gray-800 flex justify-between items-center group-hover:border-yellow-500/30">
+                            <span className="text-[10px] text-gray-600 uppercase font-bold">Boss Run Bağlantılı</span>
+                            <span className="text-[10px] text-blue-400 font-bold group-hover:underline flex items-center gap-1">
+                              DETAYI GÖR <Sword size={10} />
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-xl">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-900/50 text-left text-[10px] text-gray-500 uppercase tracking-widest font-black">
+                          <th className="px-6 py-4 border-b border-gray-700">İtem Adı</th>
+                          <th className="px-6 py-4 border-b border-gray-700">Miktar</th>
+                          <th className="px-6 py-4 border-b border-gray-700">Tutar</th>
+                          <th className="px-6 py-4 border-b border-gray-700">Satış Tarihi</th>
+                          <th className="px-6 py-4 border-b border-gray-700 text-right">Eylem</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-700/50">
+                        {soldItems.map((item) => (
+                          <tr
+                            key={item.id}
+                            className="hover:bg-gray-700/30 transition group cursor-pointer"
+                            onClick={async () => {
+                              if (item.run_id) {
+                                try {
+                                  const runDetails = await clanBossService.getClanBossRunDetails(item.run_id);
+                                  setSelectedRun(runDetails);
+                                  setShowRunDetailModal(true);
+                                  setShowSoldItemsModal(false);
+                                } catch (error) {
+                                  showNotification('Run detayları yüklenemedi.', 'error');
+                                }
+                              }
+                            }}
+                          >
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-white group-hover:text-yellow-400 transition-colors">{item.item_name}</div>
+                              {item.run_id && <div className="text-[10px] text-gray-500 font-bold uppercase">{item.run_id}</div>}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-white font-mono">{item.sold_quantity}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-green-500 font-black">{new Intl.NumberFormat('tr-TR').format(item.sale_amount)} G</span>
+                            </td>
+                            <td className="px-6 py-4 text-xs text-gray-400">
+                              {new Date(item.sold_at).toLocaleDateString('tr-TR')}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              {item.run_id && (
+                                <button className="text-blue-500 hover:text-blue-400 font-black text-[10px] uppercase flex items-center gap-1 justify-end ml-auto">
+                                  DETAY <Sword size={12} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 bg-gray-900 border-t border-gray-700 flex justify-between items-center px-8">
+                <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">
+                  Toplam Satış Adedi: <span className="text-white">{soldItems.length}</span>
+                </span>
+                <p className="text-xs text-gray-400 uppercase font-black tracking-widest">
+                  Toplam Kazanç: <span className="text-green-500 text-lg ml-2 font-mono">
+                    {new Intl.NumberFormat('tr-TR').format(soldItems.reduce((acc, curr) => acc + parseFloat(curr.sale_amount), 0))} <span className="text-[10px]">COIN</span>
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 };
 
-export default ClanPage;
+export default ClanPage; 

@@ -136,8 +136,11 @@ class MessageController {
 
       // GÜVENLİK: Kimlik doğrulama
       if (req.user.uid !== userId) {
+        logDebug(`IDENTITY MISMATCH: req.user.uid(${req.user.uid}) !== userId(${userId})`);
         return res.status(403).json({ error: 'Sender identity mismatch' });
       }
+
+      logDebug(`Request Body: ${JSON.stringify(req.body)}`);
 
       // VALIDATION
       if (!text || !text.trim()) {
@@ -156,14 +159,18 @@ class MessageController {
       }
 
       // ŞİFRELEME
+      logDebug(`Attempting encryption for text length: ${text.length}`);
       const encryptedText = EncryptionService.encrypt(text.trim());
+      logDebug(`Encryption successful`);
 
+      logDebug(`Inserting into DB: sender=${userId}, receiver=${receiverId}`);
       const result = await pool.query(
         `INSERT INTO private_messages (sender_id, receiver_id, text, participants, created_at)
          VALUES ($1, $2, $3, $4, NOW())
          RETURNING *`,
         [userId, receiverId, encryptedText, [userId, receiverId]]
       );
+      logDebug(`DB Insert successful, ID: ${result.rows[0]?.id}`);
 
       const newMessage = result.rows[0];
 
@@ -193,8 +200,9 @@ class MessageController {
 
       res.status(201).json(messagePayload);
     } catch (error) {
+      logDebug(`CRITICAL ERROR in createMessage: ${error.message}\nStack: ${error.stack}`);
       console.error('Message create error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: 'Internal server error', debug: error.message });
     }
   }
 

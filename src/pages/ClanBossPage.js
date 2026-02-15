@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Sword, Users, Plus, X, Search, Trash2, Check, Shield } from 'lucide-react';
+import { Sword, Users, Plus, X, Search, Trash2, Check, Shield, AlertCircle } from 'lucide-react';
 import clanBossService from '../services/clanBossService';
+import { clanService } from '../services/clanService';
 
 const ClanBossPage = ({ userData, uid, clanId }) => {
     const [runs, setRuns] = useState([]);
@@ -21,6 +22,13 @@ const ClanBossPage = ({ userData, uid, clanId }) => {
         lastAction: '',
         apiCalls: [],
         errors: []
+    });
+
+    // Filter state
+    const [filters, setFilters] = useState({
+        itemName: '',
+        playerName: '',
+        date: ''
     });
 
     // Modal UI states
@@ -61,7 +69,7 @@ const ClanBossPage = ({ userData, uid, clanId }) => {
 
     const loadClanMembers = async () => {
         try {
-            const response = await clanBossService.getClanMembers(clanId);
+            const response = await clanService.getClanMembers(clanId);
             setMembers(response);
         } catch (error) {
             console.error('Members load error:', error);
@@ -164,6 +172,17 @@ const ClanBossPage = ({ userData, uid, clanId }) => {
         }));
     };
 
+    const filteredRuns = runs.filter(run => {
+        const matchesItem = !filters.itemName || (run.drops || []).some(d => (d.item_name || '').toLowerCase().includes(filters.itemName.toLowerCase()));
+        const matchesPlayer = !filters.playerName || (run.participants || []).some(p =>
+            (p.username || '').toLowerCase().includes(filters.playerName.toLowerCase()) ||
+            (p.main_character || '').toLowerCase().includes(filters.playerName.toLowerCase())
+        );
+        const matchesDate = !filters.date || new Date(run.run_date).toISOString().split('T')[0] === filters.date;
+
+        return matchesItem && matchesPlayer && matchesDate;
+    });
+
     // DEBUGGER PANEL COMPONENT
     const DebuggerPanel = () => (
         <div className="fixed bottom-4 right-4 w-96 h-64 bg-black/90 border border-green-500 rounded-lg p-3 text-green-400 font-mono text-xs overflow-auto z-50">
@@ -226,60 +245,127 @@ const ClanBossPage = ({ userData, uid, clanId }) => {
                 </button>
             </div>
 
+            {/* Filters Bar */}
+            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 mb-6 flex flex-wrap gap-4 items-end">
+                <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">İtem Ara</label>
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                        <input
+                            type="text"
+                            placeholder="İtem adı..."
+                            value={filters.itemName}
+                            onChange={(e) => setFilters(prev => ({ ...prev, itemName: e.target.value }))}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 pl-10 pr-4 text-sm focus:border-red-500 transition-colors"
+                        />
+                    </div>
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Oyuncu Ara</label>
+                    <div className="relative">
+                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                        <input
+                            type="text"
+                            placeholder="Oyuncu adı..."
+                            value={filters.playerName}
+                            onChange={(e) => setFilters(prev => ({ ...prev, playerName: e.target.value }))}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 pl-10 pr-4 text-sm focus:border-red-500 transition-colors"
+                        />
+                    </div>
+                </div>
+                <div className="w-full md:w-auto">
+                    <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Tarih</label>
+                    <input
+                        type="date"
+                        value={filters.date}
+                        onChange={(e) => setFilters(prev => ({ ...prev, date: e.target.value }))}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 px-4 text-sm focus:border-red-500 transition-colors"
+                    />
+                </div>
+                {(filters.itemName || filters.playerName || filters.date) && (
+                    <button
+                        onClick={() => setFilters({ itemName: '', playerName: '', date: '' })}
+                        className="text-gray-400 hover:text-white text-sm pb-2 underline transition-colors"
+                    >
+                        Filtreleri Temizle
+                    </button>
+                )}
+            </div>
+
             {/* Runs List */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {runs.map(run => (
-                    <div key={run.id} className="bg-gray-800 border border-gray-700 rounded p-4 hover:border-red-500 transition-colors">
-                        <div className="flex justify-between items-start mb-3">
-                            <h3 className="text-xl font-bold text-red-400">{run.boss_name}</h3>
-                            <div className="flex gap-2">
-                                <span className={`text-xs px-2 py-1 rounded ${run.is_completed
-                                    ? 'bg-green-900 text-green-400 border border-green-700'
-                                    : 'bg-gray-700 text-gray-300'
-                                    }`}>
-                                    {run.is_completed ? 'COMPLETED' : 'ACTIVE'}
-                                </span>
-                                <span className="text-xs bg-gray-700 px-2 py-1 rounded">
-                                    {new Date(run.run_date).toLocaleDateString()}
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2 text-sm mb-4">
-                            <div className="flex justify-between">
-                                <span className="text-gray-400">Participants:</span>
-                                <span className="text-green-400">{run.participant_count}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-400">Drops:</span>
-                                <span className="text-yellow-400">{run.drop_count}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-400">Paid:</span>
-                                <span className="text-blue-400">{run.paid_count}/{run.participant_count}</span>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setSelectedRun(run)}
-                                className="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm font-mono"
-                            >
-                                [VIEW]
-                            </button>
-                            {(run.created_by === uid || userData?.clanRole === 'leader') && (
-                                <>
-                                    <button className="px-3 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-sm font-mono">
-                                        [EDIT]
-                                    </button>
-                                    <button className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-mono">
-                                        [DEL]
-                                    </button>
-                                </>
-                            )}
-                        </div>
+                {filteredRuns.length === 0 ? (
+                    <div className="col-span-full py-12 text-center bg-gray-800/20 border border-dashed border-gray-700 rounded-xl">
+                        <AlertCircle className="mx-auto mb-3 text-gray-500" size={32} />
+                        <p className="text-gray-500 font-bold uppercase tracking-widest">Kayıt bulunamadı</p>
                     </div>
-                ))}
+                ) : (
+                    filteredRuns.map(run => (
+                        <div key={run.id} className="bg-gray-800 border border-gray-700 rounded p-4 hover:border-red-500 transition-colors">
+                            <div className="flex justify-between items-start mb-3">
+                                <h3 className="text-xl font-bold text-red-400">{run.boss_name}</h3>
+                                <div className="flex gap-2">
+                                    <span className={`text-xs px-2 py-1 rounded ${run.is_completed
+                                        ? 'bg-green-900 text-green-400 border border-green-700'
+                                        : 'bg-gray-700 text-gray-300'
+                                        }`}>
+                                        {run.is_completed ? 'COMPLETED' : 'ACTIVE'}
+                                    </span>
+                                    <span className="text-xs bg-gray-700 px-2 py-1 rounded">
+                                        {new Date(run.run_date).toLocaleDateString()}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 text-sm mb-4">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Participants:</span>
+                                    <span className="text-green-400">{run.participant_count}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Drops:</span>
+                                    <span className="text-yellow-400">{run.drop_count}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Paid:</span>
+                                    <span className="text-blue-400">{run.paid_count}/{run.participant_count}</span>
+                                </div>
+                            </div>
+
+                            {/* Items Display */}
+                            {run.drops && run.drops.length > 0 && (
+                                <div className="mb-4 pt-3 border-t border-gray-700/50">
+                                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter mb-1">Items Found:</p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {run.drops.map((drop, idx) => (
+                                            <span key={idx} className="bg-yellow-900/30 text-yellow-500 border border-yellow-800/50 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                                                {drop.item_name} {drop.quantity > 1 ? `x${drop.quantity}` : ''}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setSelectedRun(run)}
+                                    className="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm font-mono"
+                                >
+                                    [VIEW]
+                                </button>
+                                {(run.created_by === uid || userData?.clanRole === 'leader') && (
+                                    <>
+                                        <button className="px-3 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-sm font-mono">
+                                            [EDIT]
+                                        </button>
+                                        <button className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-mono">
+                                            [DEL]
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )))}
             </div>
 
             {/* Create Modal */}
