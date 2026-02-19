@@ -75,6 +75,28 @@ CREATE INDEX idx_bank_sold_clan ON clan_bank_sold(clan_id);
 CREATE INDEX idx_bank_transactions_clan ON clan_bank_transactions(clan_id);
 CREATE INDEX idx_payments_clan ON clan_payments(clan_id);
 CREATE INDEX idx_payments_run ON clan_payments(run_id);
+
+-- 6. Add participation_score to clan_members if not exists
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clan_members' AND column_name='participation_score') THEN
+        ALTER TABLE clan_members ADD COLUMN participation_score INTEGER DEFAULT 0;
+    END IF;
+END $$;
+
+-- 7. clan_acp_donations (ACP Donations tracking)
+CREATE TABLE IF NOT EXISTS clan_acp_donations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    clan_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    amount INTEGER NOT NULL DEFAULT 0,
+    donation_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_acp_clan_user ON clan_acp_donations(clan_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_acp_date ON clan_acp_donations(donation_date);
 `;
 
 async function runMigration() {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Crown, Users, Plus, X, Search, Sword, Database, MessageSquare, AlertCircle, ArrowRight, UserPlus, Calendar, Coins, UserCheck, UserX, Tag, TrendingUp, BarChart2, PieChart as PieIcon, Wallet } from 'lucide-react';
+import { Crown, Users, Plus, X, Search, Sword, Database, MessageSquare, AlertCircle, ArrowRight, UserPlus, Calendar, Coins, UserCheck, UserX, Tag, TrendingUp, BarChart2, PieChart as PieIcon, Wallet, UserMinus } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
@@ -42,7 +42,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [showCreateRunModal, setShowCreateRunModal] = useState(false);
   const [showRunDetailModal, setShowRunDetailModal] = useState(false);
   const [showParticipantModal, setShowParticipantModal] = useState(false);
-  const [runDate, setRunDate] = useState('');
+  const [runDate, setRunDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [drops, setDrops] = useState([]);
   const [newDropItem, setNewDropItem] = useState('');
@@ -68,6 +68,9 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [transactions, setTransactions] = useState([]);
   const [soldItems, setSoldItems] = useState([]);
   const [showSoldItemsModal, setShowSoldItemsModal] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const [runToDelete, setRunToDelete] = useState(null);
   const [soldItemsView, setSoldItemsView] = useState('grid'); // 'list' or 'grid'
 
   // Helper: İtem ismine göre ikon yolunu oluşturur
@@ -76,11 +79,15 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     try {
       // Enhancement seviyesini kaldır: "Divine Earring (+1)" -> "Divine Earring"
       const baseName = itemName.split(' (+')[0].split(' +')[0].trim();
+
+      // Özel durumlar: Golden Bar ve Silver Bar (JPG uzantılı ve farklı isimlendirme)
+      if (baseName === "Golden Bar") return '/ui_icons/Gold_Bar.JPG';
+      if (baseName === "Silver Bar") return '/ui_icons/Silver_Bar.JPG';
+
       // Boşlukları alt tire ile değiştir
       const snakeName = baseName.replace(/ /g, '_');
       // İkon yolunu oluştur
       return `/ui_icons/Icon_Item_${snakeName}.png`;
-      // console.log(`Generated icon path for ${itemName}: ${path}`); // Debug log
     } catch (err) {
       console.error("Icon path error:", err);
       return null;
@@ -156,6 +163,15 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       showNotification('Clanlar yüklenirken hata oluştu.', 'error');
     }
   };
+
+  // ACP State
+  const [showACPModal, setShowACPModal] = useState(false);
+  const [acpDonations, setAcpDonations] = useState([]); // [{ userId, amount }]
+  const [dailyACPStats, setDailyACPStats] = useState({}); // { userId: amount }
+  const [acpDate, setAcpDate] = useState(new Date().toISOString().split('T')[0]);
+  const [acpHistory, setAcpHistory] = useState([]);
+  const [acpView, setAcpView] = useState('add'); // 'add' or 'history'
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   const handleCreateClan = async () => {
     if (!clanName.trim()) {
@@ -239,7 +255,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       await clanService.addMembersToClan(selectedClan.id, userIds);
 
       // Üye listesini güncelle
-      const updatedMembers = await clanBossService.getClanMembers(selectedClan.id);
+      const updatedMembers = await clanService.getClanMembers(selectedClan.id);
       setClanMembers(updatedMembers);
 
       setSelectedUsers([]);
@@ -250,6 +266,96 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       showNotification('Kullanıcılar eklenirken hata oluştu.', 'error');
     }
   };
+
+  // ACP Functions
+  const handleOpenACPModal = () => {
+    // Initialize donation inputs for all members
+    const initialDonations = clanMembers.map(m => ({
+      userId: m.user_id,
+      nickname: m.nickname || m.char_name || m.username,
+      amount: ''
+    }));
+    setAcpDonations(initialDonations);
+    setAcpDate(new Date().toISOString().split('T')[0]);
+    setAcpView('add');
+    setShowACPModal(true);
+  };
+
+  const fetchACPHistory = async () => {
+    try {
+      setIsHistoryLoading(true);
+      const history = await clanService.getClanACPHistory(selectedClan.id);
+      setAcpHistory(history);
+    } catch (error) {
+      console.error('ACP history error:', error);
+      showNotification('Bağış geçmişi yüklenemedi.', 'error');
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
+
+  const handleDeleteACP = async (acpId) => {
+    if (!window.confirm('Bu bağışı silmek istediğinizden emin misiniz?')) return;
+    try {
+      await clanService.deleteClanACP(selectedClan.id, acpId);
+      showNotification('Bağış silindi.', 'success');
+      fetchACPHistory();
+      // Refresh members
+      const updatedMembers = await clanService.getClanMembers(selectedClan.id);
+      setClanMembers(updatedMembers);
+    } catch (error) {
+      showNotification('Bağış silinemedi.', 'error');
+    }
+  };
+
+  const handleACPChange = (userId, value) => {
+    setAcpDonations(prev => prev.map(d =>
+      d.userId === userId ? { ...d, amount: value } : d
+    ));
+  };
+
+  const submitACPDonations = async () => {
+    const validDonations = acpDonations
+      .filter(d => d.amount && !isNaN(d.amount) && parseInt(d.amount) > 0)
+      .map(d => ({ userId: d.userId, amount: parseInt(d.amount) }));
+
+    if (validDonations.length === 0) {
+      showNotification('En az bir geçerli bağış girmelisiniz.', 'error');
+      return;
+    }
+
+    try {
+      await clanService.addClanACP(selectedClan.id, {
+        donations: validDonations,
+        date: acpDate
+      });
+
+      showNotification('ACP bağışları kaydedildi.', 'success');
+      setShowACPModal(false);
+
+      // Refresh members to show updated totals
+      const updatedMembers = await clanService.getClanMembers(selectedClan.id);
+      setClanMembers(updatedMembers);
+    } catch (error) {
+      console.error('ACP error:', error);
+      showNotification('Bağışlar kaydedilirken hata oluştu.', 'error');
+    }
+  };
+
+  // Fetch daily ACP when date changes in Run Modal
+  useEffect(() => {
+    if (showCreateRunModal && runDate && selectedClan) {
+      const fetchDailyStats = async () => {
+        try {
+          const stats = await clanService.getDailyACP(selectedClan.id, runDate);
+          setDailyACPStats(stats);
+        } catch (error) {
+          console.error('Daily ACP error:', error);
+        }
+      };
+      fetchDailyStats();
+    }
+  }, [showCreateRunModal, runDate, selectedClan]);
 
   const filteredUsers = availableUsers.filter(user =>
     user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -359,6 +465,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
         name: item.name
       }));
       setItems(itemNames);
+      return itemNames; // Return the items so we can use them immediately
     } catch (error) {
       console.error('Itemlar yüklenemedi:', error);
       // Hata durumunda mock data kullan
@@ -367,9 +474,12 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
         { id: 2, name: 'Magic Shield' },
         { id: 3, name: 'Golden Ring' },
         { id: 4, name: 'Dragon Scale' },
-        { id: 5, name: 'Ancient Tome' }
+        { id: 5, name: 'Ancient Tome' },
+        { id: 2733, name: 'Golden Bar' },
+        { id: 2734, name: 'Silver Bar' }
       ];
       setItems(mockItems);
+      return mockItems;
     }
   };
 
@@ -408,7 +518,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   };
 
   const resetRunForm = () => {
-    setRunDate('');
+    setRunDate(new Date().toISOString().split('T')[0]);
     setSelectedParticipants([]);
     setDrops([]);
     setNewDropItem('');
@@ -480,14 +590,38 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
 
   const handleDeleteRun = async (runId) => {
     try {
-      await clanService.deleteClanBossRun(runId);
-      showNotification('Boss run silindi.', 'success');
+      setDeleteError(null); // Clear previous errors
+      const result = await clanService.deleteClanBossRun(runId);
+
+      // Show success message with balance info if available
+      let successMessage = 'Boss run silindi.';
+      if (result.balance_reversed && result.balance_reversed > 0) {
+        successMessage += ` Bakiyeden ${result.formatted_balance} G geri alındı.`;
+      }
+
+      showNotification(successMessage, 'success');
+      setShowDeleteConfirmModal(false);
       setShowRunDetailModal(false);
+      setRunToDelete(null);
       fetchClanBossRuns();
     } catch (error) {
       console.error('Boss run silinemedi:', error);
-      showNotification('Boss run silinirken hata oluştu.', 'error');
+
+      // Set error to be displayed in modal
+      setDeleteError({
+        message: error.message || 'Boss run silinirken hata oluştu.',
+        details: error.details,
+        payment_count: error.payment_count,
+        total_paid: error.total_paid
+      });
     }
+  };
+
+  const openDeleteConfirmation = (run) => {
+    setRunToDelete(run);
+    setDeleteError(null);
+    setShowDeleteConfirmModal(true);
+    setShowRunDetailModal(false); // Detay modalını kapat
   };
 
   const addDrop = () => {
@@ -920,7 +1054,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     (clanBossRuns || []).forEach(run => {
       const realDrops = (run.drops || []).filter(d => {
         const name = (d.item_name || '').toLowerCase();
-        return !name.includes('silver bar') && !name.includes('gold bar') && !name.includes('bar');
+        return !name.includes('silver bar') && !name.includes('golden bar') && !name.includes('bar');
       });
       if (realDrops.length > 0) runsWithRealDrops++;
 
@@ -1302,6 +1436,9 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                         <th className="px-6 py-4 border-b border-gray-700/50">Üye Bilgisi</th>
                         <th className="px-6 py-4 border-b border-gray-700/50">Rol</th>
                         <th className="px-6 py-4 border-b border-gray-700/50">Katılma Tarihi</th>
+                        <th className="px-6 py-4 border-b border-gray-700/50 text-center">Puan</th>
+                        <th className="px-6 py-4 border-b border-gray-700/50 text-center">Top. ACP</th>
+                        <th className="px-6 py-4 border-b border-gray-700/50 text-right">İşlemler</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700/50">
@@ -1312,9 +1449,10 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                           onClick={(e) => handleMemberClick(e, member, selectedClan.id)}
                         >
                           <td className="px-6 py-4">
-                            <div className="font-bold text-white group-hover:text-blue-400 transition-colors">
+                            <div className="font-bold text-white group-hover:text-blue-400 transition-colors flex items-center gap-2">
                               {member.nickname || member.display_name || member.username}
-                              {member.user_id === uid && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">SİZ</span>}
+                              {member.user_id === uid && <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">SİZ</span>}
+                              {member.role === 'leader' && <Crown size={14} className="text-yellow-500" />}
                             </div>
                             <div className="text-xs text-gray-500">@{member.username}</div>
                           </td>
@@ -1327,12 +1465,64 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                           <td className="px-6 py-4 text-sm text-gray-500">
                             {new Date(member.joined_at).toLocaleDateString()}
                           </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="inline-flex items-center justify-center px-2 py-1 bg-blue-900/20 text-blue-400 rounded-lg text-xs font-bold border border-blue-500/10 shadow-sm">
+                              {member.participation_score || 0}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="inline-flex items-center justify-center px-2 py-1 bg-purple-900/20 text-purple-400 rounded-lg text-xs font-bold border border-purple-500/10 shadow-sm">
+                              {(member.total_acp || 0).toLocaleString()}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            {selectedClan.owner_id === uid && member.user_id !== uid && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startRemoveMember(selectedClan.id, member.user_id, member.username);
+                                }}
+                                className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition"
+                                title="Klandan Çıkar"
+                              >
+                                <UserMinus size={16} />
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  {clanMembers.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      Henüz üye bulunmuyor.
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {/* Action Buttons */}
+              {selectedClan.owner_id === uid && (
+                <div className="flex justify-end gap-3 mt-4">
+                  <button
+                    onClick={handleOpenACPModal}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition shadow-lg shadow-purple-900/20"
+                  >
+                    <Plus size={18} />
+                    <span>ACP Bağış Ekle</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      fetchAvailableUsers();
+                      setShowAddMemberModal(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition shadow-lg shadow-yellow-900/20"
+                  >
+                    <UserPlus size={18} />
+                    <span>Üye Ekle</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Yan Panel */}
@@ -1409,8 +1599,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                 Klan Boss Run'ları
               </h2>
               <button
-                onClick={() => {
-                  fetchItems();
+                onClick={async () => {
+                  const fetchedItems = await fetchItems();
                   // Otomatik olarak oluşturanı seç
                   const creator = clanMembers.find(m => m.user_id === uid);
                   if (creator) {
@@ -1424,12 +1614,12 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   // Barları başlangıçta ekle (Görsel olarak)
                   const barItems = [
                     { name: 'Silver Bar', search: 'silver bar' },
-                    { name: 'Gold Bar', search: 'gold bar' }
+                    { name: 'Golden Bar', search: 'golden bar' }
                   ];
 
                   const initialDrops = [];
                   barItems.forEach(bar => {
-                    const matchedItem = items.find(i => i.name.toLowerCase().includes(bar.search));
+                    const matchedItem = (fetchedItems || items).find(i => (i.name || '').toLowerCase().includes(bar.search));
                     initialDrops.push({
                       item_id: matchedItem ? matchedItem.id : null,
                       item_name: matchedItem ? matchedItem.name : bar.name,
@@ -1439,6 +1629,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   });
                   setDrops(initialDrops);
 
+                  setRunDate(new Date().toISOString().split('T')[0]);
                   setShowCreateRunModal(true);
                 }}
                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-bold transition-all shadow-lg"
@@ -2197,7 +2388,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   </div>
                 </div>
 
-                {/* Guaranteed Drops Section (Silver & Gold Bars) */}
+                {/* Guaranteed Drops Section (Silver & Golden Bars) */}
                 <div className="bg-blue-900/20 rounded-xl p-4 border border-blue-500/30 mb-6">
                   <div className="flex justify-between items-center mb-2">
                     <label className="block text-xs font-black text-blue-400 uppercase tracking-widest">Garantili Droplar (%100)</label>
@@ -2215,10 +2406,10 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                     </div>
                     <div className="flex-1 flex items-center gap-3 bg-gray-900/60 p-2 rounded-lg border border-gray-700/50">
                       <div className="w-8 h-8 rounded bg-gray-800 flex items-center justify-center overflow-hidden">
-                        <img src={getItemIcon('Gold Bar')} alt="" className="w-6 h-6 object-contain" onError={(e) => e.target.style.display = 'none'} />
+                        <img src={getItemIcon('Golden Bar')} alt="" className="w-6 h-6 object-contain" onError={(e) => e.target.style.display = 'none'} />
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-white">Gold Bar</div>
+                        <div className="text-sm font-bold text-white">Golden Bar</div>
                         <div className="text-[10px] text-gray-500 font-bold uppercase">100.000.000 G</div>
                       </div>
                     </div>
@@ -2226,7 +2417,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                 </div>
 
                 {/* Participants Section */}
-                <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 mb-6">
+                <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700 mb-6">
                   <div className="flex justify-between items-center mb-3">
                     <label className="block text-sm font-medium text-gray-400">Katılımcılar ({selectedParticipants.length})</label>
                     <button
@@ -2238,29 +2429,33 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                     </button>
                   </div>
 
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {selectedParticipants.map((participant, index) => (
-                      <div key={participant.user_id} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
-                        <div>
-                          <div className="font-medium text-white">{participant.nickname || participant.username}</div>
-                          <div className="text-sm text-gray-400">{participant.main_character}</div>
-                        </div>
-                        {participant.user_id !== uid && (
-                          <button
-                            onClick={() => setSelectedParticipants(selectedParticipants.filter((_, i) => i !== index))}
-                            className="text-red-500 hover:text-red-400 p-1"
-                          >
-                            <X size={16} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {selectedParticipants.length === 0 && (
-                      <div className="text-center py-4 text-gray-500 text-sm">
-                        Henüz katılımcı eklenmedi
-                      </div>
-                    )}
-                  </div>
+                  {selectedParticipants.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                      {selectedParticipants.map((participant, index) => {
+                        const dailyAmount = dailyACPStats[participant.user_id] || 0;
+                        return (
+                          <div key={participant.user_id} className="flex justify-between items-center bg-gray-800 p-2 rounded-lg border border-gray-700">
+                            <div>
+                              <div className="font-medium text-white text-sm">{participant.nickname || participant.username}</div>
+                              <div className="text-xs text-purple-400 font-bold">ACP: {dailyAmount.toLocaleString()}</div>
+                            </div>
+                            {participant.user_id !== uid && (
+                              <button
+                                onClick={() => setSelectedParticipants(selectedParticipants.filter((_, i) => i !== index))}
+                                className="text-red-500 hover:text-red-400 p-1"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500 text-sm italic">
+                      Henüz katılımcı eklenmedi
+                    </div>
+                  )}
                 </div>
 
                 {/* Drops Section */}
@@ -2436,8 +2631,13 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                     <h4 className="font-bold text-white uppercase tracking-tighter italic">Katılımcılar ({selectedRun.participants?.length || 0})</h4>
                     <div className="flex gap-2">
                       <div className="text-[10px] text-gray-500 font-bold uppercase">
-                        Ödeme Bekleyen: {selectedRun.participants?.filter(p => {
-                          const share = Math.floor((selectedRun.total_sold_amount || 0) / (selectedRun.participants?.length || 1));
+                        Ödeme Bekleyen: {selectedRun.participants?.filter((p, index) => {
+                          const total = selectedRun.total_sold_amount || 0;
+                          const count = selectedRun.participants?.length || 1;
+                          const baseShare = Math.floor(total / count);
+                          const remainder = total % count;
+                          const share = index < remainder ? baseShare + 1 : baseShare;
+
                           const remaining = share - parseFloat(p.paid_amount || 0);
                           return remaining > 0;
                         }).length || 0}
@@ -2449,8 +2649,13 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   </div>
 
                   <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {selectedRun.participants?.map(participant => {
-                      const share = Math.floor((selectedRun.total_sold_amount || 0) / (selectedRun.participants?.length || 1));
+                    {selectedRun.participants?.map((participant, index) => {
+                      const total = selectedRun.total_sold_amount || 0;
+                      const count = selectedRun.participants?.length || 1;
+                      const baseShare = Math.floor(total / count);
+                      const remainder = total % count;
+                      const share = index < remainder ? baseShare + 1 : baseShare;
+
                       const paidAmount = parseFloat(participant.paid_amount || 0);
                       const remaining = Math.max(0, share - paidAmount);
 
@@ -2482,6 +2687,11 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                               {participant.user_id === uid
                                 ? (userData.profile?.mainCharacter || participant.nickname || participant.main_character || participant.username)
                                 : (participant.nickname || participant.main_character || participant.username)}
+                              {participant.daily_acp > 0 && (
+                                <span className="ml-2 text-xs bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded-full border border-purple-500/20 font-bold">
+                                  {participant.daily_acp} ACP
+                                </span>
+                              )}
                             </div>
                             {selectedRun.total_sold_amount > 0 && (
                               <div className="grid grid-cols-3 gap-2 mt-2">
@@ -2595,9 +2805,14 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                             </span>
 
                             {/* Role and Bank Item Check for Sell Button */}
-                            {((selectedClan?.owner_id === uid) ||
-                              (bankData?.role === 'leader' || bankData?.role === 'owner') ||
-                              (clanMembers.find(m => m.user_id === uid)?.role === 'leader')) && bankItem && (
+                            {/* Don't show sell button for auto-sold bars */}
+                            {(() => {
+                              const isAutoSoldBar = drop.item_name === 'Silver Bar' || drop.item_name === 'Golden Bar' || drop.item_name === 'Gold Bar';
+                              const canSell = ((selectedClan?.owner_id === uid) ||
+                                (bankData?.role === 'leader' || bankData?.role === 'owner') ||
+                                (clanMembers.find(m => m.user_id === uid)?.role === 'leader')) && bankItem && !isAutoSoldBar;
+
+                              return canSell ? (
                                 <button
                                   onClick={() => {
                                     setItemToSell({ id: bankItem.id, name: drop.item_name, quantity: drop.quantity });
@@ -2608,7 +2823,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                                 >
                                   Sat
                                 </button>
-                              )}
+                              ) : null;
+                            })()}
                           </div>
                         </div>
                       );
@@ -2627,11 +2843,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                 <div>
                   {(selectedRun.created_by === uid) && (
                     <button
-                      onClick={() => {
-                        if (window.confirm('Bu run\'u silmek istediğinizden emin misiniz?')) {
-                          handleDeleteRun(selectedRun.id);
-                        }
-                      }}
+                      onClick={() => openDeleteConfirmation(selectedRun)}
                       className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition flex items-center gap-2"
                     >
                       <X size={16} />
@@ -2855,6 +3067,150 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
           </div>
         )}
 
+        {/* ACP Donation Modal */}
+        {showACPModal && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[130] p-4 backdrop-blur-sm">
+            <div className="bg-gray-800 w-full max-w-2xl rounded-2xl border border-gray-700 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="p-6 border-b border-gray-700 bg-gray-800/80 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Coins className="text-purple-500" size={24} />
+                    ACP Bağışı
+                  </h3>
+                  {(selectedClan.owner_id === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
+                    <div className="flex bg-gray-900 p-1 rounded-lg ml-4">
+                      <button
+                        onClick={() => setAcpView('add')}
+                        className={`px-4 py-1.5 rounded-md text-xs font-bold transition ${acpView === 'add' ? 'bg-purple-600 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        Ekle
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAcpView('history');
+                          fetchACPHistory();
+                        }}
+                        className={`px-4 py-1.5 rounded-md text-xs font-bold transition ${acpView === 'history' ? 'bg-purple-600 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        Geçmiş / Yönet
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowACPModal(false)}
+                  className="text-gray-400 hover:text-white transition"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {acpView === 'add' ? (
+                <>
+                  <div className="p-6 overflow-y-auto">
+                    <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-purple-900/20 border border-purple-500/20 rounded-lg p-4">
+                        <h4 className="font-bold text-purple-300 mb-1 text-sm">Bilgilendirme</h4>
+                        <p className="text-xs text-gray-300">
+                          Sadece 0'dan büyük değer girilen üyeler için bağış kaydı oluşturulacaktır.
+                        </p>
+                      </div>
+                      <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 flex flex-col justify-center">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Bağış Tarihi</label>
+                        <input
+                          type="date"
+                          value={acpDate}
+                          onChange={(e) => setAcpDate(e.target.value)}
+                          className="bg-gray-800 text-white px-3 py-1.5 rounded border border-gray-600 focus:border-purple-500 focus:outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {acpDonations.map((donation) => (
+                        <div key={donation.userId} className="flex items-center justify-between bg-gray-900/50 p-3 rounded-lg border border-gray-700/50">
+                          <div className="font-medium text-white">{donation.nickname}</div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              placeholder="Miktar"
+                              value={donation.amount}
+                              onChange={(e) => handleACPChange(donation.userId, e.target.value)}
+                              className="w-32 bg-gray-800 text-white px-3 py-1.5 rounded border border-gray-600 focus:border-purple-500 focus:outline-none text-right"
+                              min="0"
+                            />
+                            <span className="text-xs text-gray-500 font-bold w-8 text-center">ACP</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex justify-end gap-3">
+                    <button
+                      onClick={() => setShowACPModal(false)}
+                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition font-medium"
+                    >
+                      İptal
+                    </button>
+                    <button
+                      onClick={submitACPDonations}
+                      className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition font-bold shadow-lg shadow-purple-900/30"
+                    >
+                      Bağışları Kaydet
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 overflow-hidden flex flex-col">
+                  <div className="p-6 overflow-y-auto flex-1">
+                    {isHistoryLoading ? (
+                      <div className="text-center py-10 text-gray-400">Yükleniyor...</div>
+                    ) : acpHistory.length === 0 ? (
+                      <div className="text-center py-10 text-gray-500 italic">Henüz bağış kaydı bulunmuyor.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {acpHistory.map((item) => (
+                          <div key={item.id} className="bg-gray-900 border border-gray-700 rounded-xl p-4 flex justify-between items-center group">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 bg-purple-900/30 rounded-full flex items-center justify-center text-purple-400 font-black">
+                                {item.amount}
+                              </div>
+                              <div>
+                                <div className="text-white font-bold">{item.main_character || item.username}</div>
+                                <div className="text-[10px] text-gray-500 flex items-center gap-2 uppercase tracking-tight">
+                                  <span>{new Date(item.donation_date).toLocaleDateString('tr-TR')}</span>
+                                  <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
+                                  <span>Ekleyen: {item.creator_name}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteACP(item.id)}
+                              className="p-2 bg-red-900/20 text-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                              title="Sil"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex justify-end">
+                    <button
+                      onClick={() => setShowACPModal(false)}
+                      className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition font-bold"
+                    >
+                      Kapat
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Remove Member Confirmation Modal */}
         {showRemoveConfirm && memberToRemove && (
           <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[110] p-4 backdrop-blur-md">
@@ -3056,6 +3412,84 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
           </div>
         )
       }
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirmModal && runToDelete && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md shadow-2xl animate-fade-in relative overflow-hidden">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-700 bg-red-900/10">
+              <h3 className="text-xl font-bold text-red-400 flex items-center gap-2">
+                <AlertCircle size={24} />
+                Run Silme Onayı
+              </h3>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              {deleteError ? (
+                <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-4">
+                  <h4 className="font-bold text-red-400 mb-2 flex items-center gap-2">
+                    <X size={16} />
+                    {deleteError.message}
+                  </h4>
+                  {deleteError.details && (
+                    <p className="text-sm text-gray-300 ml-6 whitespace-pre-line">
+                      {deleteError.details}
+                    </p>
+                  )}
+                  {deleteError.payment_count > 0 && (
+                    <div className="mt-3 p-3 bg-red-950/30 rounded border border-red-800/30">
+                      <p className="text-xs text-red-300 font-bold">ÖNERİLEN ÇÖZÜM:</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        1. Bu pencereyi kapatın<br />
+                        2. Katılımcılar listesinden yapılan ödemeleri "Ödendi" durumundan çıkarın<br />
+                        3. Tekrar silmeyi deneyin
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="text-gray-300">
+                    <span className="font-bold text-white">{runToDelete.boss_name}</span> kaydını silmek istediğinizden emin misiniz?
+                  </p>
+                  <div className="bg-yellow-900/20 border border-yellow-700/30 rounded p-3 text-sm text-yellow-500">
+                    <p className="font-bold flex items-center gap-2 mb-1">
+                      <AlertCircle size={14} /> DİKKAT
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 ml-1 opacity-90">
+                      <li>Bu işlem geri alınamaz.</li>
+                      <li>Otomatik satılan barların tutarı clan bakiyesinden düşülecektir.</li>
+                      <li>Tüm drop ve katılımcı kayıtları silinecektir.</li>
+                    </ul>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirmModal(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-bold transition"
+              >
+                {deleteError ? 'Kapat' : 'İptal'}
+              </button>
+
+              {!deleteError && (
+                <button
+                  onClick={() => handleDeleteRun(runToDelete.id)}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition flex items-center gap-2"
+                >
+                  <X size={16} />
+                  Evet, Sil
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 };

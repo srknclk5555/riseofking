@@ -13,7 +13,12 @@ const {
   deleteClan,
   getAvailableUsers,
   getClanMessages,
-  sendClanMessage
+  sendClanMessage,
+  addClanACP,
+  getDailyACP,
+  getClanACPHistory,
+  updateClanACP,
+  deleteClanACP
 } = require('../controllers/clanController');
 const authMiddleware = require('../middleware/auth');
 
@@ -30,6 +35,14 @@ router.post('/:clanId/members', authMiddleware, (req, res, next) => { console.lo
 router.delete('/:clanId/member/:userId', authMiddleware, removeMemberFromClan); // Yeni rota
 router.get('/:clanId/messages', authMiddleware, getClanMessages);
 router.post('/:clanId/messages', authMiddleware, sendClanMessage);
+
+// ACP Rotaları
+router.post('/:clanId/acp', authMiddleware, addClanACP);
+router.get('/:clanId/acp/daily', authMiddleware, getDailyACP);
+router.get('/:clanId/acp/history', authMiddleware, getClanACPHistory);
+router.put('/:clanId/acp/:id', authMiddleware, updateClanACP);
+router.delete('/:clanId/acp/:id', authMiddleware, deleteClanACP);
+
 router.post('/:id/apply', authMiddleware, applyToClan);
 router.put('/:id', authMiddleware, updateClan);
 router.delete('/:id', authMiddleware, deleteClan);

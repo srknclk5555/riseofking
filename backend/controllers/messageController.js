@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const EncryptionService = require('../services/encryptionService');
+const NotificationService = require('../services/notificationService');
 const { getIO, sendToUser } = require('../socket/socketManager');
 require('dotenv').config();
 
@@ -197,6 +198,16 @@ class MessageController {
 
       // Gönderene de gönder (farklı sekmede açıksa senkron olsun)
       sendToUser(userId, 'message_sent', messagePayload);
+
+      // BİLDİRİM: Alıcıya genel bir bildirim de kaydet (Header'da görünmesi için)
+      await NotificationService.create({
+        receiver_id: receiverId,
+        title: 'Yeni Mesaj',
+        text: `${senderUsername} size bir mesaj gönderdi: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`,
+        related_id: userId, // Mesajı atan kişinin ID'si
+        type: 'message',
+        priority: 'normal'
+      });
 
       res.status(201).json(messagePayload);
     } catch (error) {

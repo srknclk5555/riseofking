@@ -22,7 +22,7 @@ if (isProduction || process.env.DATABASE_URL) {
   console.log('[DB CONFIG] Port:', process.env.PG_PORT);
   console.log('[DB CONFIG] User:', process.env.PG_USER);
   console.log('[DB CONFIG] Database:', process.env.PG_DATABASE);
-  
+
   pool = new Pool({
     host: process.env.PG_HOST,
     port: parseInt(process.env.PG_PORT),

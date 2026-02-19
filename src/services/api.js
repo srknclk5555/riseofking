@@ -60,7 +60,9 @@ export const clanService = {
   applyToClan: (id) => request(`/clans/${id}/applications`, { method: 'POST' }),
   updateClan: (id, data) => request(`/clans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteClan: (id) => request(`/clans/${id}`, { method: 'DELETE' }),
-  getAvailableUsers: () => request('/clans/users/available-for-clan')
+  getAvailableUsers: () => request('/clans/users/available-for-clan'),
+  addClanACP: (id, data) => request(`/clans/${id}/acp`, { method: 'POST', body: JSON.stringify(data) }),
+  getDailyACP: (id, date) => request(`/clans/${id}/acp/daily?date=${date}`)
 };
 
 // --- MOBS SERVİSİ ---

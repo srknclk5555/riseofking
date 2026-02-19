@@ -493,14 +493,27 @@ export default function App() {
       ));
     };
 
+    // Event Handler: Yeni Bildirim
+    const handleNewNotification = (notif) => {
+      console.log('[DEBUG] handleNewNotification triggered:', notif);
+      setNotifications(prev => {
+        if (prev.some(n => n.id === notif.id)) return prev;
+        return [notif, ...prev];
+      });
+      // Opsiyonel: Ses çalabilir veya bildirim modalı gösterebiliriz
+      showNotification(`${notif.title}: ${notif.text.substring(0, 30)}${notif.text.length > 30 ? '...' : ''}`, 'info');
+    };
+
     socketService.on('new_message', handleNewMessage);
     socketService.on('message_sent', handleMessageSent);
     socketService.on('message_read_update', handleMessageRead);
+    socketService.on('notification_received', handleNewNotification);
 
     return () => {
       socketService.off('new_message');
       socketService.off('message_sent');
       socketService.off('message_read_update');
+      socketService.off('notification_received');
     };
   }, [user, activeTab]);
 
@@ -611,7 +624,18 @@ export default function App() {
             {/* Bildirim İkonu */}
             <button
               className="relative p-2 text-gray-400 hover:text-white transition"
-              onClick={() => setIsNotifPanelOpen(!isNotifPanelOpen)}
+              onClick={async () => {
+                const newState = !isNotifPanelOpen;
+                setIsNotifPanelOpen(newState);
+                if (newState && unreadCount > 0) {
+                  try {
+                    await notificationService.markAllAsRead(user.uid);
+                    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+                  } catch (err) {
+                    console.error('Mark all read failed:', err);
+                  }
+                }
+              }}
             >
               <Bell size={20} />
               {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border border-gray-800"></span>}
@@ -1388,11 +1412,12 @@ const BossRunModal = ({ isOpen, onClose, activeClan, uid, userData, editData, sh
         setBossName("");
         setDate(formatDate(new Date()));
         setParticipants([{ uid, nickname: userData.profile?.mainCharacter || "Ben", isPaid: false }]);
-        // Gold Bar ve Silver Bar itemlerini otomatik ekle (ön tanımlı ve satılacak şekilde)
-        setDrops([
-          { itemName: "Gold Bar", quantity: 1, estPrice: 100000000, isSold: true, soldPrice: 100000000 },
+        // Golden Bar ve Silver Bar itemlerini otomatik ekle (ön tanımlı ve satılacak şekilde)
+        const autoBars = [
+          { itemName: "Golden Bar", quantity: 1, estPrice: 100000000, isSold: true, soldPrice: 100000000 },
           { itemName: "Silver Bar", quantity: 1, estPrice: 10000000, isSold: true, soldPrice: 10000000 }
-        ]);
+        ];
+        setDrops(autoBars);
       }
     }
   }, [isOpen, editData, activeClan, uid, userData]);

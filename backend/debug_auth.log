@@ -91,3 +91,32 @@
 2026-02-15T06:53:09.977Z [MSG]: Encryption successful
 2026-02-15T06:53:09.978Z [MSG]: Inserting into DB: sender=user_1771109202620_lmyq8x90m, receiver=user_1771068597855_4xs2tk8xm
 2026-02-15T06:53:09.982Z [MSG]: DB Insert successful, ID: 47
+2026-02-15T11:56:57.248Z [MSG]: getAllMessages Check - UserID Param: "user_1771068597855_4xs2tk8xm", AuthUser ID: "636", Type: number
+2026-02-15T17:23:22.524Z [MSG]: getAllMessages Check - UserID Param: "user_1771068597855_4xs2tk8xm", AuthUser ID: "636", Type: number
+2026-02-15T17:23:26.591Z [MSG]: Request Body: {"receiverId":"user_1771109202620_lmyq8x90m","text":"gg"}
+2026-02-15T17:23:26.596Z [MSG]: Attempting encryption for text length: 2
+2026-02-15T17:23:26.597Z [MSG]: Encryption successful
+2026-02-15T17:23:26.598Z [MSG]: Inserting into DB: sender=user_1771068597855_4xs2tk8xm, receiver=user_1771109202620_lmyq8x90m
+2026-02-15T17:23:26.651Z [MSG]: DB Insert successful, ID: 48
+2026-02-15T17:23:30.784Z [MSG]: getAllMessages Check - UserID Param: "user_1771109202620_lmyq8x90m", AuthUser ID: "649", Type: number
+2026-02-15T17:26:14.228Z [MSG]: getAllMessages Check - UserID Param: "user_1771068597855_4xs2tk8xm", AuthUser ID: "636", Type: number
+2026-02-15T17:47:55.073Z [MSG]: getAllMessages Check - UserID Param: "user_1771109202620_lmyq8x90m", AuthUser ID: "649", Type: number
+2026-02-15T17:53:31.603Z [MSG]: getAllMessages Check - UserID Param: "user_1771109202620_lmyq8x90m", AuthUser ID: "649", Type: number
+2026-02-15T17:55:26.792Z [MSG]: getAllMessages Check - UserID Param: "user_1771109202620_lmyq8x90m", AuthUser ID: "649", Type: number
+2026-02-15T17:57:22.214Z [MSG]: getAllMessages Check - UserID Param: "user_1771068597855_4xs2tk8xm", AuthUser ID: "636", Type: number
+2026-02-15T18:07:15.655Z [MSG]: getAllMessages Check - UserID Param: "user_1771068597855_4xs2tk8xm", AuthUser ID: "636", Type: number
+2026-02-15T18:07:19.336Z [MSG]: Request Body: {"receiverId":"user_1771109202620_lmyq8x90m","text":"sa1"}
+2026-02-15T18:07:19.341Z [MSG]: Attempting encryption for text length: 3
+2026-02-15T18:07:19.344Z [MSG]: Encryption successful
+2026-02-15T18:07:19.345Z [MSG]: Inserting into DB: sender=user_1771068597855_4xs2tk8xm, receiver=user_1771109202620_lmyq8x90m
+2026-02-15T18:07:19.352Z [MSG]: DB Insert successful, ID: 49
+2026-02-15T18:07:22.655Z [MSG]: getAllMessages Check - UserID Param: "user_1771109202620_lmyq8x90m", AuthUser ID: "649", Type: number
+2026-02-15T18:07:28.868Z [MSG]: getAllMessages Check - UserID Param: "user_1771109202620_lmyq8x90m", AuthUser ID: "649", Type: number
+2026-02-15T18:07:34.288Z [MSG]: Request Body: {"receiverId":"user_1771068597855_4xs2tk8xm","text":"as1"}
+2026-02-15T18:07:34.291Z [MSG]: Attempting encryption for text length: 3
+2026-02-15T18:07:34.292Z [MSG]: Encryption successful
+2026-02-15T18:07:34.292Z [MSG]: Inserting into DB: sender=user_1771109202620_lmyq8x90m, receiver=user_1771068597855_4xs2tk8xm
+2026-02-15T18:07:34.296Z [MSG]: DB Insert successful, ID: 50
+2026-02-15T18:13:28.982Z [MSG]: getAllMessages Check - UserID Param: "user_1771068597855_4xs2tk8xm", AuthUser ID: "636", Type: number
+2026-02-16T01:55:38.072Z [MSG]: getAllMessages Check - UserID Param: "user_1771068597855_4xs2tk8xm", AuthUser ID: "636", Type: number
+2026-02-18T16:58:19.528Z [MSG]: getAllMessages Check - UserID Param: "user_1771068597855_4xs2tk8xm", AuthUser ID: "636", Type: number

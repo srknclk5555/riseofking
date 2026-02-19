@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const NotificationService = require('../services/notificationService');
 
 // Clan bankasını ve bakiyesini getir
 const getClanBank = async (req, res) => {
@@ -117,6 +118,31 @@ const sellItem = async (req, res) => {
         );
 
         await client.query('COMMIT');
+
+        // BİLDİRİM: Run katılımcılarına item satıldığını bildir
+        if (item.run_id) {
+            try {
+                const participantsResult = await pool.query(
+                    'SELECT user_id FROM clan_boss_participants WHERE run_id = $1',
+                    [item.run_id]
+                );
+
+                const notifications = participantsResult.rows.map(p => ({
+                    receiver_id: p.user_id,
+                    title: 'İtem Satıldı',
+                    text: `${item.item_name} sold: ${formattedSaleAmount} coin added to clan bank.`,
+                    related_id: item.run_id,
+                    type: 'sale_notification'
+                }));
+
+                if (notifications.length > 0) {
+                    await NotificationService.createMultiple(notifications);
+                }
+            } catch (notifError) {
+                console.error('Sale notification error:', notifError);
+            }
+        }
+
         res.status(200).json({ message: 'Satış başarıyla tamamlandı' });
 
     } catch (error) {
@@ -208,6 +234,20 @@ const payParticipant = async (req, res) => {
         );
 
         await client.query('COMMIT');
+
+        // BİLDİRİM: Ödeme yapılan kullanıcıya bildir
+        try {
+            await NotificationService.create({
+                receiver_id: participantUserId,
+                title: 'Ödeme Yapıldı',
+                text: `${formattedAmount} coin payout for ${info?.boss_name || 'Boss Run'} has been sent to you.`,
+                related_id: runId,
+                type: 'payout_notification'
+            });
+        } catch (notifError) {
+            console.error('Payment notification error:', notifError);
+        }
+
         res.status(200).json({ message: 'Ödeme başarıyla yapıldı' });
 
     } catch (error) {

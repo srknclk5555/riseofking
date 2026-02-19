@@ -183,10 +183,18 @@ const getClanMembers = async (req, res) => {
         u.uid as user_id,
         cm.role,
         cm.joined_at,
+        cm.participation_score,
+        COALESCE(acp.total_acp, 0) as total_acp,
         u."mainCharacter" as char_name,
         u.username
       FROM clan_members cm
       LEFT JOIN users u ON cm.user_id = u.uid
+      LEFT JOIN (
+          SELECT user_id, SUM(amount) as total_acp 
+          FROM clan_acp_donations 
+          WHERE clan_id = $1 
+          GROUP BY user_id
+      ) acp ON cm.user_id = acp.user_id
       WHERE cm.clan_id = $1
       ORDER BY cm.joined_at ASC
     `, [clanId]);
@@ -664,6 +672,189 @@ const sendClanMessage = async (req, res) => {
   }
 };
 
+// ACP BAĞIŞ SİSTEMİ
+
+// ACP Bağışı Ekle (Sadece Klan Lideri/Sahibi)
+const addClanACP = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { clanId } = req.params;
+    const { donations, date } = req.body; // donations: [{ userId, amount }], date: 'YYYY-MM-DD'
+    const addedBy = req.user?.uid;
+
+    if (!addedBy) return res.status(401).json({ error: 'Yetkisiz erişim' });
+    if (!donations || !Array.isArray(donations) || donations.length === 0) {
+      return res.status(400).json({ error: 'Geçerli bir bağış listesi gerekli' });
+    }
+
+    // Yetki kontrolü
+    const clanResult = await client.query(
+      'SELECT owner_id FROM clans WHERE id = $1',
+      [clanId]
+    );
+    const memberResult = await client.query(
+      'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+      [clanId, addedBy]
+    );
+
+    const isOwner = clanResult.rows[0]?.owner_id === addedBy;
+    const isLeader = memberResult.rows[0]?.role === 'leader';
+
+    if (!isOwner && !isLeader) {
+      return res.status(403).json({ error: 'Sadece klan lideri ACP girişi yapabilir' });
+    }
+
+    await client.query('BEGIN');
+
+    for (const donation of donations) {
+      if (donation.amount > 0) {
+        await client.query(
+          `INSERT INTO clan_acp_donations (clan_id, user_id, amount, donation_date, created_by)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [clanId, donation.userId, donation.amount, date || new Date(), addedBy]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    res.status(200).json({ message: 'ACP bağışları başarıyla eklendi' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ ACP ekleme hatası:', error);
+    res.status(500).json({ error: 'ACP bağışları eklenemedi' });
+  } finally {
+    client.release();
+  }
+};
+
+// ACP Bağış Geçmişini Getir
+const getClanACPHistory = async (req, res) => {
+  try {
+    const { clanId } = req.params;
+    const { limit = 50, offset = 0 } = req.query;
+
+    const result = await pool.query(
+      `SELECT d.id, d.user_id, d.amount, d.donation_date, d.created_at, 
+              u.username, u."mainCharacter" as main_character,
+              cb.username as creator_name
+       FROM clan_acp_donations d
+       JOIN users u ON d.user_id = u.uid
+       JOIN users cb ON d.created_by = cb.uid
+       WHERE d.clan_id = $1
+       ORDER BY d.donation_date DESC, d.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [clanId, limit, offset]
+    );
+
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('❌ ACP geçmişi getirme hatası:', error);
+    res.status(500).json({ error: 'ACP geçmişi alınamadı' });
+  }
+};
+
+// ACP Bağışını Güncelle
+const updateClanACP = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, date } = req.body;
+    const userId = req.user?.uid;
+
+    // Yetki kontrolü (Bağışın ait olduğu klanın lideri mi?)
+    const donationCheck = await pool.query(
+      'SELECT clan_id FROM clan_acp_donations WHERE id = $1',
+      [id]
+    );
+
+    if (donationCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Bağış kaydı bulunamadı' });
+    }
+
+    const clanId = donationCheck.rows[0].clan_id;
+    const clanResult = await pool.query('SELECT owner_id FROM clans WHERE id = $1', [clanId]);
+    const memberResult = await pool.query('SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2', [clanId, userId]);
+
+    if (clanResult.rows[0]?.owner_id !== userId && memberResult.rows[0]?.role !== 'leader') {
+      return res.status(403).json({ error: 'Bu işlemi yapmaya yetkiniz yok' });
+    }
+
+    await pool.query(
+      `UPDATE clan_acp_donations 
+       SET amount = $1, donation_date = $2, created_at = CURRENT_TIMESTAMP
+       WHERE id = $3`,
+      [amount, date, id]
+    );
+
+    res.status(200).json({ message: 'Bağış güncellendi' });
+  } catch (error) {
+    console.error('❌ ACP güncelleme hatası:', error);
+    res.status(500).json({ error: 'Bağış güncellenemedi' });
+  }
+};
+
+// ACP Bağışını Sil
+const deleteClanACP = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.uid;
+
+    const donationCheck = await pool.query(
+      'SELECT clan_id FROM clan_acp_donations WHERE id = $1',
+      [id]
+    );
+
+    if (donationCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Bağış kaydı bulunamadı' });
+    }
+
+    const clanId = donationCheck.rows[0].clan_id;
+    const clanResult = await pool.query('SELECT owner_id FROM clans WHERE id = $1', [clanId]);
+    const memberResult = await pool.query('SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2', [clanId, userId]);
+
+    if (clanResult.rows[0]?.owner_id !== userId && memberResult.rows[0]?.role !== 'leader') {
+      return res.status(403).json({ error: 'Bu işlemi yapmaya yetkiniz yok' });
+    }
+
+    await pool.query('DELETE FROM clan_acp_donations WHERE id = $1', [id]);
+
+    res.status(200).json({ message: 'Bağış silindi' });
+  } catch (error) {
+    console.error('❌ ACP silme hatası:', error);
+    res.status(500).json({ error: 'Bağış silinemedi' });
+  }
+};
+
+// Günlük ACP Bağışlarını Getir (Run oluşturma ekranı için)
+const getDailyACP = async (req, res) => {
+  try {
+    const { clanId } = req.params;
+    const { date } = req.query; // YYYY-MM-DD formatında
+
+    if (!date) {
+      return res.status(400).json({ error: 'Tarih parametresi gerekli' });
+    }
+
+    const result = await pool.query(
+      `SELECT user_id, SUM(amount) as daily_total
+       FROM clan_acp_donations
+       WHERE clan_id = $1 AND donation_date = $2
+       GROUP BY user_id`,
+      [clanId, date]
+    );
+
+    // Frontend'in kolay işlemesi için map formatına çevir: { userId: amount }
+    const dailyMap = {};
+    result.rows.forEach(row => {
+      dailyMap[row.user_id] = parseInt(row.daily_total);
+    });
+
+    res.status(200).json(dailyMap);
+  } catch (error) {
+    console.error('❌ Günlük ACP getirme hatası:', error);
+    res.status(500).json({ error: 'ACP verisi alınamadı' });
+  }
+};
+
 module.exports = {
   getAllClans,
   getUserClans,
@@ -677,5 +868,10 @@ module.exports = {
   applyToClan,
   updateClan,
   deleteClan,
-  getAvailableUsers
+  getAvailableUsers,
+  addClanACP,
+  getDailyACP,
+  getClanACPHistory,
+  updateClanACP,
+  deleteClanACP
 };

@@ -403,11 +403,104 @@ export const clanService = {
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        // Create error with detailed information
+        const error = new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        error.details = errorData.details;
+        error.payment_count = errorData.payment_count;
+        error.total_paid = errorData.total_paid;
+        error.errorData = errorData; // Include full error data
+        throw error;
       }
       return await response.json();
     } catch (error) {
       console.error('Klan boss run silme hatasi:', error);
+      throw error;
+    }
+  },
+
+  // ACP Bağışı Ekle
+  addClanACP: async (clanId, data) => {
+    try {
+      const response = await fetch(`${API_BASE}/clans/${clanId}/acp`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('ACP ekleme hatası:', error);
+      throw error;
+    }
+  },
+
+  // Günlük ACP Bağışlarını Getir
+  getDailyACP: async (clanId, date) => {
+    try {
+      const response = await fetch(`${API_BASE}/clans/${clanId}/acp/daily?date=${date}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Günlük ACP getirme hatası:', error);
+      throw error;
+    }
+  },
+
+  // ACP Bağış Geçmişini Getir
+  getClanACPHistory: async (clanId, page = 0, limit = 50) => {
+    try {
+      const response = await fetch(`${API_BASE}/clans/${clanId}/acp/history?limit=${limit}&offset=${page * limit}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('ACP geçmişi getirme hatası:', error);
+      throw error;
+    }
+  },
+
+  // ACP Bağışını Güncelle
+  updateClanACP: async (clanId, acpId, data) => {
+    try {
+      const response = await fetch(`${API_BASE}/clans/${clanId}/acp/${acpId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('ACP güncelleme hatası:', error);
+      throw error;
+    }
+  },
+
+  // ACP Bağışını Sil
+  deleteClanACP: async (clanId, acpId) => {
+    try {
+      const response = await fetch(`${API_BASE}/clans/${clanId}/acp/${acpId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('ACP silme hatası:', error);
       throw error;
     }
   }
