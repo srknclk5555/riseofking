@@ -195,7 +195,7 @@ const getClanMembers = async (req, res) => {
           WHERE clan_id = $1 
           GROUP BY user_id
       ) acp ON cm.user_id = acp.user_id
-      WHERE cm.clan_id = $1
+      WHERE cm.clan_id = $1 AND cm.status = 'active'
       ORDER BY cm.joined_at ASC
     `, [clanId]);
 
@@ -503,9 +503,9 @@ const removeMemberFromClan = async (req, res) => {
       return res.status(400).json({ error: 'Klan lideri klandan çıkarılamaz' });
     }
 
-    // Kullanıcıyı klandan kaldır
+    // Kullanıcıyı klandan pasif duruma getir (silme!)
     await pool.query(
-      `DELETE FROM clan_members WHERE clan_id = $1 AND user_id = $2`,
+      `UPDATE clan_members SET status = 'inactive', left_at = CURRENT_TIMESTAMP WHERE clan_id = $1 AND user_id = $2`,
       [clanId, userId]
     );
 

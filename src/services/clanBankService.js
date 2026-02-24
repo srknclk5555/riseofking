@@ -79,6 +79,45 @@ const clanBankService = {
             throw new Error(errorData.error || 'Satılan itemler yüklenemedi');
         }
         return response.json();
+    },
+
+    updateClanDebt: async (clanId, debtData) => {
+        const response = await fetch(`${API_BASE}/clan-bank/debt`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ clanId, ...debtData })
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Borç güncellenemedi');
+        }
+        return response.json();
+    },
+
+    updateClanTax: async (clanId, taxData) => {
+        const response = await fetch(`${API_BASE}/clan-bank/tax`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ clanId, ...taxData })
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Hazine güncellenemedi');
+        }
+        return response.json();
+    },
+
+    processTreasuryAction: async (clanId, actionData) => {
+        const response = await fetch(`${API_BASE}/clan-bank/treasury-action`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ clanId, ...actionData })
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'İşlem başarısız');
+        }
+        return response.json();
     }
 };
 

@@ -73,6 +73,27 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [runToDelete, setRunToDelete] = useState(null);
   const [soldItemsView, setSoldItemsView] = useState('grid'); // 'list' or 'grid'
 
+  // Clan Debt & Tax States
+  const [clanDebt, setClanDebt] = useState(0);
+  const [clanTax, setClanTax] = useState(0);
+  const [debtExplanation, setDebtExplanation] = useState('');
+  const [showDebtEditModal, setShowDebtEditModal] = useState(false);
+  const [showDebtDetailModal, setShowDebtDetailModal] = useState(false);
+  const [newDebtAmount, setNewDebtAmount] = useState('');
+  const [newDebtExplanation, setNewDebtExplanation] = useState('');
+  const [showTaxEditModal, setShowTaxEditModal] = useState(false);
+  const [newTaxAmount, setNewTaxAmount] = useState('');
+  const [isProcessingTreasury, setIsProcessingTreasury] = useState(false);
+  const [debtWarningModal, setDebtWarningModal] = useState({ open: false, type: 'warning', title: '', message: '', onConfirm: null });
+
+  // New Search States
+  const [memberSearchTerm, setMemberSearchTerm] = useState('');
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [acpHistorySearch, setAcpHistorySearch] = useState('');
+  const [acpDateFilterType, setAcpDateFilterType] = useState('all'); // all, today, week, range
+  const [acpStartDate, setAcpStartDate] = useState('');
+  const [acpEndDate, setAcpEndDate] = useState('');
+
   // Helper: İtem ismine göre ikon yolunu oluşturur
   const getItemIcon = (itemName) => {
     if (!itemName) return null;
@@ -217,6 +238,18 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     } catch (error) {
       console.error('[CLAN] Dashboard error:', error);
       showNotification('Clan detayları yüklenirken hata oluştu.', 'error');
+    }
+  };
+
+  const refreshClanMembers = async () => {
+    if (!selectedClan) return;
+    try {
+      const members = await clanService.getClanMembers(selectedClan.id);
+      if (Array.isArray(members)) {
+        setClanMembers(members);
+      }
+    } catch (error) {
+      console.error('[CLAN] Error refreshing members:', error);
     }
   };
 
@@ -571,6 +604,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     } catch (error) {
       console.error("Run'dan ayrilamadi:", error);
       showNotification("Run'dan ayrilirken hata olustu.", 'error');
+    } finally {
+      refreshClanMembers(); // Sync scores
     }
   };
 
@@ -585,6 +620,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     } catch (error) {
       console.error("Katılımcı run'dan çıkarılamadı:", error);
       showNotification(`Katılımcı run'dan çıkarılırken hata oluştu: ${error.message}`, 'error');
+    } finally {
+      refreshClanMembers(); // Sync scores
     }
   };
 
@@ -604,6 +641,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       setShowRunDetailModal(false);
       setRunToDelete(null);
       fetchClanBossRuns();
+      refreshClanMembers(); // Sync scores after deletion
     } catch (error) {
       console.error('Boss run silinemedi:', error);
 
@@ -614,6 +652,26 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
         payment_count: error.payment_count,
         total_paid: error.total_paid
       });
+    }
+  };
+
+  const handleDistributeShare = async (runId, userId) => {
+    if (!window.confirm('Bu kişinin payını diğer katılımcılara dağıtmak istediğinize emin misiniz? Bu işlem kişiyi bu run kaydından tamamen çıkaracaktır.')) {
+      return;
+    }
+
+    try {
+      await clanService.removeParticipantFromRun(runId, userId);
+      showNotification("Pay başarıyla diğer katılımcılara dağıtıldı.", 'success');
+
+      // Detayları ve listeyi yenile
+      const updatedRun = await clanService.getClanBossRunById(runId);
+      setSelectedRun(updatedRun);
+      fetchClanBossRuns();
+      refreshClanMembers();
+    } catch (error) {
+      console.error("Pay dağıtılamadı:", error);
+      showNotification(`Pay dağıtılırken hata oluştu: ${error.message}`, 'error');
     }
   };
 
@@ -661,8 +719,15 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     try {
       const data = await clanBankService.getClanBank(selectedClan.id);
       setBankData(data);
+      setClanDebt(parseFloat(data.clan_debt || 0));
+      setClanTax(parseFloat(data.clan_tax || 0));
+      setDebtExplanation(data.debt_explanation || '');
+      // Modal inputlarını da ilklendir
+      setNewDebtAmount(data.clan_debt || 0);
+      setNewDebtExplanation(data.debt_explanation || '');
+      setNewTaxAmount(data.clan_tax || 0);
     } catch (error) {
-      console.error('Banka yüklenemedi:', error);
+      console.error('Banka verisi yüklenemedi:', error);
       showNotification('Banka bilgileri yüklenirken hata oluştu.', 'error');
     }
   };
@@ -754,6 +819,109 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     }
   }
 
+  // Clan Debt & Tax Handlers
+  const handleUpdateDebt = async () => {
+    try {
+      await clanBankService.updateClanDebt(selectedClan.id, {
+        clanDebt: parseFloat(newDebtAmount),
+        debtExplanation: newDebtExplanation
+      });
+      showNotification('Klan borcu güncellendi.', 'success');
+      setShowDebtEditModal(false);
+      fetchClanBank();
+    } catch (error) {
+      showNotification('Borç güncellenemedi.', 'error');
+    }
+  };
+
+  const handleUpdateTax = async () => {
+    try {
+      await clanBankService.updateClanTax(selectedClan.id, {
+        clanTax: parseFloat(newTaxAmount)
+      });
+      showNotification('Hazine (Tax) güncellendi.', 'success');
+      setShowTaxEditModal(false);
+      fetchClanBank();
+    } catch (error) {
+      showNotification('Hazine güncellenemedi.', 'error');
+    }
+  };
+
+  const handleProcessTreasuryAction = async (actionType, amount, description, runId = null, dropId = null) => {
+    if (isProcessingTreasury) return;
+    setIsProcessingTreasury(true);
+    try {
+      await clanBankService.processTreasuryAction(selectedClan.id, {
+        actionType,
+        amount: parseFloat(amount),
+        description,
+        relatedRunId: runId,
+        dropId: dropId
+      });
+      showNotification('İşlem başarıyla gerçekleştirildi.', 'success');
+      fetchClanBank();
+      fetchTransactions();
+      return true;
+    } catch (error) {
+      // Kullanıcı dostu hata mesajını göster
+      showNotification(error.message || 'İşlem başarısız.', 'error');
+      return false;
+    } finally {
+      setIsProcessingTreasury(false);
+    }
+  };
+
+  // Borç ödemesi için kontrol ve onay modalı
+  const handlePayDebtWithWarning = async (amount, description, runId = null, dropId = null) => {
+    if (isProcessingTreasury) return;
+    const currentDebt = parseFloat(clanDebt || 0);
+    const payAmount = parseFloat(amount);
+
+    // Borç yoksa → hata modalı
+    if (currentDebt <= 0) {
+      setDebtWarningModal({
+        open: true,
+        type: 'error',
+        title: 'Borç Bulunamadı',
+        message: 'Şu anda ödenecek aktif bir klan borcu bulunmuyor. Borç ödemesi yapılabilmesi için öncelikle bir borç kaydının oluşturulması gerekmektedir.',
+        onConfirm: null
+      });
+      return false;
+    }
+
+    // Tutar > borç → hata modalı
+    if (payAmount > currentDebt) {
+      setDebtWarningModal({
+        open: true,
+        type: 'error',
+        title: 'Tutar Borçtan Fazla',
+        message: `Ödenmek istenen tutar (${payAmount.toLocaleString('tr-TR')} G), mevcut klan borcundan (${currentDebt.toLocaleString('tr-TR')} G) fazladır. Lütfen borç miktarına eşit veya daha düşük bir tutar girin.`,
+        onConfirm: null
+      });
+      return false;
+    }
+
+    // Kısmi ödeme → uyarı modalı (onay gerekli)
+    if (payAmount < currentDebt) {
+      return new Promise((resolve) => {
+        setDebtWarningModal({
+          open: true,
+          type: 'warning',
+          title: 'Kısmi Borç Ödemesi',
+          message: `Ödemeye çalıştığınız tutar (${payAmount.toLocaleString('tr-TR')} G), mevcut toplam klan borcundan (${currentDebt.toLocaleString('tr-TR')} G) daha düşük. Bu kısmi bir ödeme olacaktır ve kalan borç ${(currentDebt - payAmount).toLocaleString('tr-TR')} G olarak güncellenecektir. Devam etmek istiyor musunuz?`,
+          onConfirm: async () => {
+            setDebtWarningModal({ open: false, type: 'warning', title: '', message: '', onConfirm: null });
+            const result = await handleProcessTreasuryAction('pay_debt', amount, description, runId, dropId);
+            resolve(result);
+          }
+        });
+      });
+    }
+
+    // Tam ödeme → direkt işlem
+    return handleProcessTreasuryAction('pay_debt', amount, description, runId, dropId);
+  };
+
   // Menü açma/kapama
   const handleMemberClick = (e, member, clanId) => {
     e.preventDefault();
@@ -804,21 +972,43 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
 
     console.log('[CLAN] Rendering', clanMembers.length, 'members');
 
+    const filteredClanMembers = clanMembers.filter(member =>
+      (member.display_name || member.username || '').toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+      (member.username || '').toLowerCase().includes(memberSearchTerm.toLowerCase())
+    );
+
     return (
       <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold">Klan Üyeleri</h3>
-          <button
-            onClick={() => setShowAddMemberModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-          >
-            <Plus size={16} />
-            Üye Ekle
-          </button>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            Klan Üyeleri
+            <span className="text-xs bg-gray-700 text-gray-400 px-2 py-1 rounded-full font-bold">
+              {filteredClanMembers.length} / {clanMembers.length}
+            </span>
+          </h3>
+          <div className="flex gap-3 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+              <input
+                type="text"
+                placeholder="Üye ara (İsim/Kullanıcı adı)..."
+                value={memberSearchTerm}
+                onChange={(e) => setMemberSearchTerm(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:border-blue-500 outline-none transition"
+              />
+            </div>
+            <button
+              onClick={() => setShowAddMemberModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold transition shadow-lg"
+            >
+              <Plus size={16} />
+              Üye Ekle
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clanMembers.map((member) => (
+          {filteredClanMembers.map((member) => (
             <div
               key={member.user_id}
               className="bg-white rounded-lg p-4 shadow border hover:shadow-lg transition-shadow cursor-pointer"
@@ -1420,16 +1610,26 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
             {/* Üye Listesi */}
             <div className="lg:col-span-2 space-y-4">
               <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden shadow-xl">
-                <div className="p-6 border-b border-gray-700 bg-gray-800/80 flex justify-between items-center">
+                <div className="p-6 border-b border-gray-700 bg-gray-800/80 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <h2 className="text-xl font-bold text-white flex items-center gap-2">
                     <Users size={20} className="text-blue-500" />
                     Clan Üyeleri
+                    <span className="text-xs bg-blue-900/50 text-blue-400 px-3 py-1 rounded-full font-bold">
+                      {clanMembers.length} Üye
+                    </span>
                   </h2>
-                  <span className="bg-blue-900/50 text-blue-400 text-xs px-3 py-1 rounded-full font-bold">
-                    {clanMembers.length} Üye
-                  </span>
+                  <div className="relative w-full md:w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Üye ara..."
+                      value={memberSearchTerm}
+                      onChange={(e) => setMemberSearchTerm(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:border-blue-500 outline-none transition"
+                    />
+                  </div>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[400px] overflow-y-auto custom-scrollbar">
                   <table className="w-full">
                     <thead>
                       <tr className="bg-gray-900/30 text-left text-[10px] text-gray-500 uppercase tracking-widest font-bold">
@@ -1442,55 +1642,60 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700/50">
-                      {clanMembers.map(member => (
-                        <tr
-                          key={member.user_id}
-                          className="hover:bg-gray-700/30 transition cursor-pointer select-none group"
-                          onClick={(e) => handleMemberClick(e, member, selectedClan.id)}
-                        >
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-white group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                              {member.nickname || member.display_name || member.username}
-                              {member.user_id === uid && <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">SİZ</span>}
-                              {member.role === 'leader' && <Crown size={14} className="text-yellow-500" />}
-                            </div>
-                            <div className="text-xs text-gray-500">@{member.username}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${member.role === 'leader' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-gray-900/50 text-gray-400'
-                              }`}>
-                              {member.role === 'leader' ? 'Lider' : 'Üye'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">
-                            {new Date(member.joined_at).toLocaleDateString()}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="inline-flex items-center justify-center px-2 py-1 bg-blue-900/20 text-blue-400 rounded-lg text-xs font-bold border border-blue-500/10 shadow-sm">
-                              {member.participation_score || 0}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="inline-flex items-center justify-center px-2 py-1 bg-purple-900/20 text-purple-400 rounded-lg text-xs font-bold border border-purple-500/10 shadow-sm">
-                              {(member.total_acp || 0).toLocaleString()}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            {selectedClan.owner_id === uid && member.user_id !== uid && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  startRemoveMember(selectedClan.id, member.user_id, member.username);
-                                }}
-                                className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition"
-                                title="Klandan Çıkar"
-                              >
-                                <UserMinus size={16} />
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {clanMembers
+                        .filter(member =>
+                          (member.nickname || member.display_name || member.username || '').toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+                          (member.username || '').toLowerCase().includes(memberSearchTerm.toLowerCase())
+                        )
+                        .map(member => (
+                          <tr
+                            key={member.user_id}
+                            className="hover:bg-gray-700/30 transition cursor-pointer select-none group"
+                            onClick={(e) => handleMemberClick(e, member, selectedClan.id)}
+                          >
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-white group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                                {member.nickname || member.display_name || member.username}
+                                {member.user_id === uid && <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">SİZ</span>}
+                                {member.role === 'leader' && <Crown size={14} className="text-yellow-500" />}
+                              </div>
+                              <div className="text-xs text-gray-500">@{member.username}</div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${member.role === 'leader' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-gray-900/50 text-gray-400'
+                                }`}>
+                                {member.role === 'leader' ? 'Lider' : 'Üye'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              {new Date(member.joined_at).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <div className="inline-flex items-center justify-center px-2 py-1 bg-blue-900/20 text-blue-400 rounded-lg text-xs font-bold border border-blue-500/10 shadow-sm">
+                                {member.participation_score || 0}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <div className="inline-flex items-center justify-center px-2 py-1 bg-purple-900/20 text-purple-400 rounded-lg text-xs font-bold border border-purple-500/10 shadow-sm">
+                                {(member.total_acp || 0).toLocaleString()}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              {selectedClan.owner_id === uid && member.user_id !== uid && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startRemoveMember(selectedClan.id, member.user_id, member.username);
+                                  }}
+                                  className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition"
+                                  title="Klandan Çıkar"
+                                >
+                                  <UserMinus size={16} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                   {clanMembers.length === 0 && (
@@ -1774,7 +1979,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
         {activeTab === 'bank' && (
           <div className="space-y-6">
             {/* Bank Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 flex items-center gap-4">
                 <div className="w-12 h-12 bg-yellow-600/20 rounded-lg flex items-center justify-center text-yellow-500">
                   <Coins size={24} />
@@ -1786,12 +1991,69 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   </div>
                 </div>
               </div>
+
+              {/* Clan Debt Card */}
+              <div
+                className="bg-gray-800 rounded-xl border border-red-900/30 p-5 flex items-center gap-4 cursor-pointer hover:bg-gray-750 transition-colors"
+                onClick={() => {
+                  const isLeader = selectedClan?.owner_id === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader' || userData?.role === 'owner';
+                  if (isLeader) {
+                    setShowDebtEditModal(true);
+                  } else {
+                    setShowDebtDetailModal(true);
+                  }
+                }}
+              >
+                <div className="w-12 h-12 bg-red-600/20 rounded-lg flex items-center justify-center text-red-500">
+                  <TrendingUp size={24} />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm text-gray-400 flex justify-between items-center">
+                    <span>Klan Borcu</span>
+                    {(selectedClan?.owner_id === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader' || userData?.role === 'owner') && (
+                      <div className="text-red-400 p-1">
+                        <Plus size={14} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-xl font-black text-red-500 font-mono">
+                    {clanDebt.toLocaleString('tr-TR')} <span className="text-xs">G</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Clan Treasury (Tax) Card */}
+              <div
+                className="bg-gray-800 rounded-xl border border-blue-900/30 p-5 flex items-center gap-4 cursor-pointer hover:bg-gray-750 transition-colors"
+                onClick={() => {
+                  const isLeader = selectedClan?.owner_id === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader' || userData?.role === 'owner';
+                  if (isLeader) setShowTaxEditModal(true);
+                }}
+              >
+                <div className="w-12 h-12 bg-blue-600/20 rounded-lg flex items-center justify-center text-blue-500">
+                  <Wallet size={24} />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm text-gray-400 flex justify-between items-center">
+                    <span>Hazine (Tax)</span>
+                    {(selectedClan?.owner_id === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader' || userData?.role === 'owner') && (
+                      <div className="text-blue-400 p-1">
+                        <Plus size={14} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-xl font-black text-blue-500 font-mono">
+                    {clanTax.toLocaleString('tr-TR')} <span className="text-xs">G</span>
+                  </div>
+                </div>
+              </div>
+
               <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 flex items-center gap-4">
                 <div className="w-12 h-12 bg-blue-600/20 rounded-lg flex items-center justify-center text-blue-500">
                   <Database size={24} />
                 </div>
                 <div>
-                  <div className="text-sm text-gray-400">Bankadaki İtemler</div>
+                  <div className="text-sm text-gray-400">İtemler</div>
                   <div className="text-xl font-black text-white font-mono">{bankData.items?.length || 0}</div>
                 </div>
               </div>
@@ -1800,10 +2062,9 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   <UserCheck size={24} />
                 </div>
                 <div>
-                  <div className="text-sm text-gray-400">Bekleyen Ödemeler</div>
+                  <div className="text-sm text-gray-400">Bekleyen</div>
                   <div className="text-xl font-black text-white font-mono">
                     {clanBossRuns.reduce((sum, run) => {
-                      // Henüz tam ödeme almamış (is_paid = false) katılımcı sayısını hesapla
                       return sum + (parseInt(run.participant_count || 0) - parseInt(run.paid_count || 0));
                     }, 0)}
                   </div>
@@ -1814,7 +2075,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   <MessageSquare size={24} />
                 </div>
                 <div>
-                  <div className="text-sm text-gray-400">Son İşlemler</div>
+                  <div className="text-sm text-gray-400">İşlemler</div>
                   <div className="text-xl font-black text-white font-mono">{transactions.length}</div>
                 </div>
               </div>
@@ -2629,13 +2890,23 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                 <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700">
                   <div className="flex justify-between items-center mb-3">
                     <h4 className="font-bold text-white uppercase tracking-tighter italic">Katılımcılar ({selectedRun.participants?.length || 0})</h4>
+                    <div className="relative w-48">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500" size={12} />
+                      <input
+                        type="text"
+                        placeholder="Ara..."
+                        value={participantSearch}
+                        onChange={(e) => setParticipantSearch(e.target.value)}
+                        className="w-full bg-gray-800 border border-gray-700 rounded pl-7 pr-2 py-1 text-xs text-white focus:border-blue-500 outline-none transition"
+                      />
+                    </div>
                     <div className="flex gap-2">
                       <div className="text-[10px] text-gray-500 font-bold uppercase">
                         Ödeme Bekleyen: {selectedRun.participants?.filter((p, index) => {
-                          const total = selectedRun.total_sold_amount || 0;
+                          const total = (selectedRun.total_sold_amount || 0) - (selectedRun.total_treasury_amount || 0);
                           const count = selectedRun.participants?.length || 1;
-                          const baseShare = Math.floor(total / count);
-                          const remainder = total % count;
+                          const baseShare = Math.floor(Math.max(0, total) / count);
+                          const remainder = Math.max(0, total) % count;
                           const share = index < remainder ? baseShare + 1 : baseShare;
 
                           const remaining = share - parseFloat(p.paid_amount || 0);
@@ -2643,111 +2914,133 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                         }).length || 0}
                       </div>
                       <div className="text-[10px] font-black text-yellow-500 ml-2 border-l border-gray-700 pl-2 uppercase">
-                        Toplam Satış: {(selectedRun.total_sold_amount || 0).toLocaleString('tr-TR')} G
+                        {(selectedRun.total_treasury_amount || 0) > 0 ? 'Net Satış: ' : 'Toplam Satış: '}
+                        {((selectedRun.total_sold_amount || 0) - (selectedRun.total_treasury_amount || 0)).toLocaleString('tr-TR')} G
                       </div>
+                      {(selectedRun.total_treasury_amount || 0) > 0 && (
+                        <div className="text-[10px] font-bold text-red-500 ml-2 border-l border-gray-700 pl-2 uppercase">
+                          Hazine: {(selectedRun.total_treasury_amount || 0).toLocaleString('tr-TR')} G
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {selectedRun.participants?.map((participant, index) => {
-                      const total = selectedRun.total_sold_amount || 0;
-                      const count = selectedRun.participants?.length || 1;
-                      const baseShare = Math.floor(total / count);
-                      const remainder = total % count;
-                      const share = index < remainder ? baseShare + 1 : baseShare;
+                  <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                    {selectedRun.participants
+                      ?.filter(p => (p.nickname || p.main_character || p.username || '').toLowerCase().includes(participantSearch.toLowerCase()))
+                      .map((participant, index) => {
+                        const total = (selectedRun.total_sold_amount || 0) - (selectedRun.total_treasury_amount || 0);
+                        const count = selectedRun.participants?.length || 1;
+                        const baseShare = Math.floor(Math.max(0, total) / count);
+                        const remainder = Math.max(0, total) % count;
+                        const share = index < remainder ? baseShare + 1 : baseShare;
 
-                      const paidAmount = parseFloat(participant.paid_amount || 0);
-                      const remaining = Math.max(0, share - paidAmount);
+                        const paidAmount = parseFloat(participant.paid_amount || 0);
+                        const remaining = Math.max(0, share - paidAmount);
 
-                      let statusText = 'Ödeme Bekliyor';
-                      let statusColor = 'bg-yellow-900/30 text-yellow-400';
+                        let statusText = 'Ödeme Bekliyor';
+                        let statusColor = 'bg-yellow-900/30 text-yellow-400';
 
-                      if (share > 0) {
-                        if (remaining <= 0) {
-                          if (selectedRun.has_unsold_items) {
-                            statusText = 'Satış Bekliyor';
-                            statusColor = 'bg-indigo-900/40 text-indigo-400';
-                          } else {
-                            statusText = 'Tamamlandı';
-                            statusColor = 'bg-green-900/40 text-green-400';
+                        if (share > 0) {
+                          if (remaining <= 0) {
+                            if (selectedRun.has_unsold_items) {
+                              statusText = 'Satış Bekliyor';
+                              statusColor = 'bg-indigo-900/40 text-indigo-400';
+                            } else {
+                              statusText = 'Tamamlandı';
+                              statusColor = 'bg-green-900/40 text-green-400';
+                            }
+                          } else if (paidAmount > 0) {
+                            statusText = 'Kısmi Ödendi';
+                            statusColor = 'bg-blue-900/40 text-blue-400';
                           }
-                        } else if (paidAmount > 0) {
-                          statusText = 'Kısmi Ödendi';
-                          statusColor = 'bg-blue-900/40 text-blue-400';
+                        } else if (selectedRun.has_unsold_items) {
+                          statusText = 'Satış Bekleniyor';
+                          statusColor = 'bg-indigo-900/20 text-indigo-300';
                         }
-                      } else if (selectedRun.has_unsold_items) {
-                        statusText = 'Satış Bekleniyor';
-                        statusColor = 'bg-indigo-900/20 text-indigo-300';
-                      }
 
-                      return (
-                        <div key={participant.user_id} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg border border-gray-700/50">
-                          <div className="flex-1">
-                            <div className="font-bold text-lg text-white">
-                              {participant.user_id === uid
-                                ? (userData.profile?.mainCharacter || participant.nickname || participant.main_character || participant.username)
-                                : (participant.nickname || participant.main_character || participant.username)}
-                              {participant.daily_acp > 0 && (
-                                <span className="ml-2 text-xs bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded-full border border-purple-500/20 font-bold">
-                                  {participant.daily_acp} ACP
+                        return (
+                          <div key={participant.user_id} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg border border-gray-700/50">
+                            <div className="flex-1">
+                              <div className="font-bold text-lg text-white">
+                                {participant.user_id === uid
+                                  ? (userData.profile?.mainCharacter || participant.nickname || participant.main_character || participant.username)
+                                  : (participant.nickname || participant.main_character || participant.username)}
+                                {participant.daily_acp > 0 && (
+                                  <span className="ml-2 text-xs bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded-full border border-purple-500/20 font-bold">
+                                    {participant.daily_acp} ACP
+                                  </span>
+                                )}
+                                {participant.member_status === 'inactive' && (
+                                  <span className="ml-2 text-[10px] bg-red-900/40 text-red-500 px-2 py-0.5 rounded border border-red-500/20 font-black uppercase tracking-tighter">
+                                    Ayrıldı
+                                  </span>
+                                )}
+                              </div>
+                              {selectedRun.total_sold_amount > 0 && (
+                                <div className="grid grid-cols-3 gap-2 mt-2">
+                                  <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                                    Hak Edilen
+                                    <div className="text-xs text-green-500 font-black">{share.toLocaleString('tr-TR')}</div>
+                                  </div>
+                                  <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                                    Ödenen
+                                    <div className="text-xs text-blue-500 font-black">{paidAmount.toLocaleString('tr-TR')}</div>
+                                  </div>
+                                  <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                                    Kalan
+                                    <div className="text-xs text-yellow-500 font-black">{remaining.toLocaleString('tr-TR')}</div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {(selectedRun.created_by === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
+                                <>
+                                  {remaining > 0 ? (
+                                    <button
+                                      onClick={() => {
+                                        setPaymentTarget(participant);
+                                        setPaymentAmount(remaining);
+                                        setPaymentDescription(`Run katılım ödemesi: ${selectedRun.boss_name}`);
+                                        setShowPaymentModal(true);
+                                      }}
+                                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-bold shadow-lg transition-transform active:scale-95"
+                                    >
+                                      Ödeme Yap
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        if (window.confirm('Son ödemeyi iptal etmek istediğinize emin misiniz?')) {
+                                          handleUpdatePaymentStatus(participant.user_id, false);
+                                        }
+                                      }}
+                                      className="px-3 py-1.5 bg-green-900/30 text-green-400 hover:bg-green-900/50 rounded text-sm font-bold border border-green-500/20"
+                                    >
+                                      {statusText} (İptal)
+                                    </button>
+                                  )}
+                                  {participant.member_status === 'inactive' && remaining > 0 && (
+                                    <button
+                                      onClick={() => handleDistributeShare(selectedRun.id, participant.user_id)}
+                                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-bold shadow-lg transition-transform active:scale-95 flex items-center gap-1 ml-2"
+                                      title="Bu üye klanda değil. Payını diğerlerine dağıt."
+                                    >
+                                      <Users size={14} /> Dağıt
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {!(selectedRun.created_by === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
+                                <span className={`px-3 py-1 rounded text-sm font-bold ${statusColor}`}>
+                                  {statusText}
                                 </span>
                               )}
                             </div>
-                            {selectedRun.total_sold_amount > 0 && (
-                              <div className="grid grid-cols-3 gap-2 mt-2">
-                                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
-                                  Hak Edilen
-                                  <div className="text-xs text-green-500 font-black">{share.toLocaleString('tr-TR')}</div>
-                                </div>
-                                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
-                                  Ödenen
-                                  <div className="text-xs text-blue-500 font-black">{paidAmount.toLocaleString('tr-TR')}</div>
-                                </div>
-                                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
-                                  Kalan
-                                  <div className="text-xs text-yellow-500 font-black">{remaining.toLocaleString('tr-TR')}</div>
-                                </div>
-                              </div>
-                            )}
                           </div>
-                          <div className="flex items-center gap-2">
-                            {(selectedRun.created_by === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
-                              <>
-                                {remaining > 0 ? (
-                                  <button
-                                    onClick={() => {
-                                      setPaymentTarget(participant);
-                                      setPaymentAmount(remaining);
-                                      setPaymentDescription(`Run katılım ödemesi: ${selectedRun.boss_name}`);
-                                      setShowPaymentModal(true);
-                                    }}
-                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-bold shadow-lg transition-transform active:scale-95"
-                                  >
-                                    Ödeme Yap
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => {
-                                      if (window.confirm('Son ödemeyi iptal etmek istediğinize emin misiniz?')) {
-                                        handleUpdatePaymentStatus(participant.user_id, false);
-                                      }
-                                    }}
-                                    className="px-3 py-1.5 bg-green-900/30 text-green-400 hover:bg-green-900/50 rounded text-sm font-bold border border-green-500/20"
-                                  >
-                                    {statusText} (İptal)
-                                  </button>
-                                )}
-                              </>
-                            )}
-                            {!(selectedRun.created_by === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
-                              <span className={`px-3 py-1 rounded text-sm font-bold ${statusColor}`}>
-                                {statusText}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                     {(!selectedRun.participants || selectedRun.participants.length === 0) && (
                       <div className="text-center py-4 text-gray-500 text-sm">
                         Katılımcı bulunmuyor
@@ -2823,6 +3116,54 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                                 >
                                   Sat
                                 </button>
+                              ) : isAutoSoldBar && (selectedClan?.owner_id === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader' || userData?.role === 'owner') ? (
+                                <div className="flex gap-1">
+                                  {drop.is_treasury_processed ? (
+                                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase shadow-sm ${drop.treasury_action_type === 'send_to_tax' ? 'bg-blue-900/40 text-blue-400 border border-blue-500/30' : 'bg-red-900/40 text-red-400 border border-red-500/30'
+                                      }`}>
+                                      {drop.treasury_action_type === 'send_to_tax' ? 'Tax' : 'Borç'} Aktarıldı
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={async () => {
+                                          if (!drop.id) {
+                                            showNotification('Hata: Drop bilgisi yüklenemedi. Lütfen bekleyin veya modalı kapatıp açın.', 'error');
+                                            return;
+                                          }
+                                          const multiplier = drop.item_name.includes('Gold') ? 100000000 : 10000000;
+                                          const totalAmount = drop.quantity * multiplier;
+                                          if (window.confirm(`${drop.item_name} karşılığı olan ${totalAmount.toLocaleString()} G tutarı klan kasasına (Tax) aktarmak istediğinize emin misiniz?`)) {
+                                            const success = await handleProcessTreasuryAction('send_to_tax', totalAmount, `Run Tax Aktarımı: ${drop.item_name}`, selectedRun.id, drop.id);
+                                            if (success) window.location.reload();
+                                          }
+                                        }}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[10px] font-bold transition shadow-md whitespace-nowrap"
+                                        title="Hazineye (Tax) Gönder"
+                                      >
+                                        Tax'a Gönder
+                                      </button>
+                                      <button
+                                        onClick={async () => {
+                                          if (!drop.id) {
+                                            showNotification('Hata: Drop bilgisi yüklenemedi. Lütfen bekleyin veya modalı kapatıp açın.', 'error');
+                                            return;
+                                          }
+                                          const multiplier = drop.item_name.includes('Gold') ? 100000000 : 10000000;
+                                          const totalAmount = drop.quantity * multiplier;
+                                          if (window.confirm(`${drop.item_name} karşılığı olan ${totalAmount.toLocaleString()} G ile klan borcu ödemek istediğinize emin misiniz?`)) {
+                                            const success = await handlePayDebtWithWarning(totalAmount, `Run Borç Ödemesi: ${drop.item_name}`, selectedRun.id, drop.id);
+                                            if (success) window.location.reload();
+                                          }
+                                        }}
+                                        className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-[10px] font-bold transition shadow-md whitespace-nowrap"
+                                        title="Borç Öde"
+                                      >
+                                        Borç Öde
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               ) : null;
                             })()}
                           </div>
@@ -2836,6 +3177,45 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                     )}
                   </div>
                 </div>
+
+                {/* Treasury Actions for Leaders */}
+                {(selectedClan?.owner_id === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader' || userData?.role === 'owner') && (
+                  <div className="bg-gray-900/30 rounded-xl p-4 border border-gray-700 mt-4">
+                    <h4 className="font-bold text-gray-400 mb-3 text-xs uppercase tracking-widest flex items-center gap-2">
+                      <TrendingUp size={14} />
+                      Banka & Hazine İşlemleri
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={async () => {
+                          const val = prompt('Tax\'a aktarılacak tutarı girin:', '0');
+                          if (val !== null && !isNaN(parseFloat(val)) && parseFloat(val) > 0) {
+                            const success = await handleProcessTreasuryAction('send_to_tax', val, `Run Genel Tax Aktarımı: ${selectedRun.boss_name}`, selectedRun.id);
+                            if (success) window.location.reload();
+                          }
+                        }}
+                        className="bg-blue-900/40 hover:bg-blue-900/60 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2"
+                      >
+                        <Wallet size={14} /> Genel Tax Payı Ayır
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const val = prompt('Borç ödemesi için kullanılacak tutarı girin:', '0');
+                          if (val !== null && !isNaN(parseFloat(val)) && parseFloat(val) > 0) {
+                            const success = await handlePayDebtWithWarning(val, `Run Genel Borç Ödemesi: ${selectedRun.boss_name}`, selectedRun.id);
+                            if (success) window.location.reload();
+                          }
+                        }}
+                        className="bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2"
+                      >
+                        <TrendingUp size={14} /> Genel Borç Öde
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-2 italic text-center">
+                      * Bu işlemler klan bankasındaki mevduatı kullanır.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Modal Footer */}
@@ -2872,6 +3252,19 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   <Users className="text-blue-500" size={20} />
                   Katılımcı Seç
                 </h3>
+                <div className="flex-1 px-8">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Üye ara (Karakter adı/Kullanıcı adı)..."
+                      value={participantSearch}
+                      onChange={(e) => setParticipantSearch(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:border-blue-500 outline-none transition"
+                      autoFocus
+                    />
+                  </div>
+                </div>
                 <button
                   onClick={() => setShowParticipantModal(false)}
                   className="text-gray-400 hover:text-white transition"
@@ -2882,15 +3275,19 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
 
               {/* Modal Content */}
               <div className="flex-1 overflow-y-auto p-6">
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {clanMembers
                     .filter(member => member.user_id !== uid) // Kendi hariç diğer üyeleri göster
+                    .filter(member =>
+                      (member.nickname || member.username || '').toLowerCase().includes(participantSearch.toLowerCase()) ||
+                      (member.main_character || '').toLowerCase().includes(participantSearch.toLowerCase())
+                    )
                     .map(member => {
                       const isSelected = selectedParticipants.some(p => p.user_id === member.user_id);
                       return (
                         <div
                           key={member.user_id}
-                          className={`p-4 rounded-lg border cursor-pointer transition-all ${isSelected
+                          className={`p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between group ${isSelected
                             ? 'bg-blue-600/20 border-blue-500'
                             : 'bg-gray-900 border-gray-700 hover:border-gray-500'
                             }`}
@@ -2909,29 +3306,30 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                             }
                           }}
                         >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-medium text-white">{member.nickname || member.username}</div>
-                              <div className="text-sm text-gray-400">{member.main_character || 'Bilinmeyen'}</div>
-                            </div>
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${isSelected
-                              ? 'bg-blue-500 border-blue-500'
-                              : 'border-gray-500'
-                              }`}>
-                              {isSelected && (
-                                <div className="w-2 h-2 bg-white rounded-full"></div>
-                              )}
-                            </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-white text-sm truncate">{member.nickname || member.username}</div>
+                            <div className="text-[10px] text-gray-500 uppercase tracking-tighter truncate">{member.main_character || 'Bilinmeyen'}</div>
+                          </div>
+                          <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected
+                            ? 'bg-blue-500 border-blue-500'
+                            : 'bg-gray-800 border-gray-600 group-hover:border-gray-400'
+                            }`}>
+                            {isSelected && <div className="w-2 h-2 bg-white rounded-full scale-110"></div>}
                           </div>
                         </div>
                       );
                     })}
 
-                  {clanMembers.filter(member => member.user_id !== uid).length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      Diğer klan üyesi bulunmuyor
-                    </div>
-                  )}
+                  {clanMembers.filter(member =>
+                    member.user_id !== uid &&
+                    ((member.nickname || member.username || '').toLowerCase().includes(participantSearch.toLowerCase()) ||
+                      (member.main_character || '').toLowerCase().includes(participantSearch.toLowerCase()))
+                  ).length === 0 && (
+                      <div className="col-span-full text-center py-12 text-gray-500 italic flex flex-col items-center gap-2">
+                        <Users size={32} className="opacity-20" />
+                        <span>Aranan kriterlere uygun üye bulunamadı</span>
+                      </div>
+                    )}
                 </div>
               </div>
 
@@ -3162,38 +3560,166 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   </div>
                 </>
               ) : (
-                <div className="flex-1 overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-hidden flex flex-col pt-4">
+                  {/* ACP History Filters */}
+                  <div className="px-6 pb-4 space-y-3 border-b border-gray-700/50">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                      <input
+                        type="text"
+                        placeholder="İsim veya karakter ara..."
+                        value={acpHistorySearch}
+                        onChange={(e) => setAcpHistorySearch(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:border-purple-500 outline-none transition"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => setAcpDateFilterType('all')}
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition ${acpDateFilterType === 'all' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                      >
+                        TÜMÜ
+                      </button>
+                      <button
+                        onClick={() => setAcpDateFilterType('today')}
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition ${acpDateFilterType === 'today' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                      >
+                        BUGÜN
+                      </button>
+                      <button
+                        onClick={() => setAcpDateFilterType('week')}
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition ${acpDateFilterType === 'week' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                      >
+                        SON 7 GÜN
+                      </button>
+                      <button
+                        onClick={() => setAcpDateFilterType('range')}
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition ${acpDateFilterType === 'range' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                      >
+                        ARALIK SEÇ
+                      </button>
+                    </div>
+
+                    {acpDateFilterType === 'range' && (
+                      <div className="flex items-center gap-2 animate-in slide-in-from-top-2 duration-200">
+                        <input
+                          type="date"
+                          value={acpStartDate}
+                          onChange={(e) => setAcpStartDate(e.target.value)}
+                          className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white"
+                        />
+                        <span className="text-gray-600">-</span>
+                        <input
+                          type="date"
+                          value={acpEndDate}
+                          onChange={(e) => setAcpEndDate(e.target.value)}
+                          className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white"
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   <div className="p-6 overflow-y-auto flex-1">
                     {isHistoryLoading ? (
                       <div className="text-center py-10 text-gray-400">Yükleniyor...</div>
-                    ) : acpHistory.length === 0 ? (
-                      <div className="text-center py-10 text-gray-500 italic">Henüz bağış kaydı bulunmuyor.</div>
                     ) : (
                       <div className="space-y-3">
-                        {acpHistory.map((item) => (
-                          <div key={item.id} className="bg-gray-900 border border-gray-700 rounded-xl p-4 flex justify-between items-center group">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-purple-900/30 rounded-full flex items-center justify-center text-purple-400 font-black">
-                                {item.amount}
-                              </div>
-                              <div>
-                                <div className="text-white font-bold">{item.main_character || item.username}</div>
-                                <div className="text-[10px] text-gray-500 flex items-center gap-2 uppercase tracking-tight">
-                                  <span>{new Date(item.donation_date).toLocaleDateString('tr-TR')}</span>
-                                  <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
-                                  <span>Ekleyen: {item.creator_name}</span>
+                        {acpHistory
+                          .filter(item => {
+                            // Search filter
+                            const matchesSearch =
+                              (item.username || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
+                              (item.main_character || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
+                              (item.creator_name || '').toLowerCase().includes(acpHistorySearch.toLowerCase());
+
+                            if (!matchesSearch) return false;
+
+                            // Date filter
+                            if (acpDateFilterType === 'all') return true;
+
+                            const donationDate = new Date(item.donation_date);
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+
+                            if (acpDateFilterType === 'today') {
+                              return donationDate.toDateString() === today.toDateString();
+                            }
+
+                            if (acpDateFilterType === 'week') {
+                              const weekAgo = new Date();
+                              weekAgo.setDate(today.getDate() - 7);
+                              return donationDate >= weekAgo;
+                            }
+
+                            if (acpDateFilterType === 'range') {
+                              if (!acpStartDate && !acpEndDate) return true;
+                              const start = acpStartDate ? new Date(acpStartDate) : new Date(0);
+                              const end = acpEndDate ? new Date(acpEndDate) : new Date();
+                              start.setHours(0, 0, 0, 0);
+                              end.setHours(23, 59, 59, 999);
+                              return donationDate >= start && donationDate <= end;
+                            }
+
+                            return true;
+                          })
+                          .map((item) => (
+                            <div key={item.id} className="bg-gray-900 border border-gray-700 rounded-xl p-4 flex justify-between items-center group">
+                              <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-purple-900/30 rounded-full flex items-center justify-center text-purple-400 font-black">
+                                  {item.amount}
+                                </div>
+                                <div>
+                                  <div className="text-white font-bold">{item.main_character || item.username}</div>
+                                  <div className="text-[10px] text-gray-500 flex items-center gap-2 uppercase tracking-tight">
+                                    <span>{new Date(item.donation_date).toLocaleDateString('tr-TR')}</span>
+                                    <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
+                                    <span>Ekleyen: {item.creator_name}</span>
+                                  </div>
                                 </div>
                               </div>
+                              <button
+                                onClick={() => handleDeleteACP(item.id)}
+                                className="p-2 bg-red-900/20 text-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                                title="Sil"
+                              >
+                                <X size={16} />
+                              </button>
                             </div>
-                            <button
-                              onClick={() => handleDeleteACP(item.id)}
-                              className="p-2 bg-red-900/20 text-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
-                              title="Sil"
-                            >
-                              <X size={16} />
-                            </button>
-                          </div>
-                        ))}
+                          ))}
+
+                        {acpHistory.filter(item => {
+                          const matchesSearch =
+                            (item.username || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
+                            (item.main_character || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
+                            (item.creator_name || '').toLowerCase().includes(acpHistorySearch.toLowerCase());
+
+                          if (!matchesSearch) return false;
+
+                          if (acpDateFilterType === 'all') return true;
+
+                          const donationDate = new Date(item.donation_date);
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+
+                          if (acpDateFilterType === 'today') return donationDate.toDateString() === today.toDateString();
+                          if (acpDateFilterType === 'week') {
+                            const weekAgo = new Date();
+                            weekAgo.setDate(today.getDate() - 7);
+                            return donationDate >= weekAgo;
+                          }
+                          if (acpDateFilterType === 'range') {
+                            if (!acpStartDate && !acpEndDate) return true;
+                            const start = acpStartDate ? new Date(acpStartDate) : new Date(0);
+                            const end = acpEndDate ? new Date(acpEndDate) : new Date();
+                            start.setHours(0, 0, 0, 0);
+                            end.setHours(23, 59, 59, 999);
+                            return donationDate >= start && donationDate <= end;
+                          }
+                          return true;
+                        }).length === 0 && (
+                            <div className="text-center py-10 text-gray-500 italic">Aranan kriterlere uygun kayıt bulunamadı.</div>
+                          )}
                       </div>
                     )}
                   </div>
@@ -3414,77 +3940,256 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       }
 
       {/* Delete Confirmation Modal */}
-      {showDeleteConfirmModal && runToDelete && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md shadow-2xl animate-fade-in relative overflow-hidden">
-            {/* Header */}
-            <div className="p-6 border-b border-gray-700 bg-red-900/10">
-              <h3 className="text-xl font-bold text-red-400 flex items-center gap-2">
-                <AlertCircle size={24} />
-                Run Silme Onayı
-              </h3>
-            </div>
+      {
+        showDeleteConfirmModal && runToDelete && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md shadow-2xl animate-fade-in relative overflow-hidden">
+              {/* Header */}
+              <div className="p-6 border-b border-gray-700 bg-red-900/10">
+                <h3 className="text-xl font-bold text-red-400 flex items-center gap-2">
+                  <AlertCircle size={24} />
+                  Run Silme Onayı
+                </h3>
+              </div>
 
-            {/* Content */}
-            <div className="p-6 space-y-4">
-              {deleteError ? (
-                <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-4">
-                  <h4 className="font-bold text-red-400 mb-2 flex items-center gap-2">
-                    <X size={16} />
-                    {deleteError.message}
-                  </h4>
-                  {deleteError.details && (
-                    <p className="text-sm text-gray-300 ml-6 whitespace-pre-line">
-                      {deleteError.details}
-                    </p>
-                  )}
-                  {deleteError.payment_count > 0 && (
-                    <div className="mt-3 p-3 bg-red-950/30 rounded border border-red-800/30">
-                      <p className="text-xs text-red-300 font-bold">ÖNERİLEN ÇÖZÜM:</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        1. Bu pencereyi kapatın<br />
-                        2. Katılımcılar listesinden yapılan ödemeleri "Ödendi" durumundan çıkarın<br />
-                        3. Tekrar silmeyi deneyin
+              {/* Content */}
+              <div className="p-6 space-y-4">
+                {deleteError ? (
+                  <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-4">
+                    <h4 className="font-bold text-red-400 mb-2 flex items-center gap-2">
+                      <X size={16} />
+                      {deleteError.message}
+                    </h4>
+                    {deleteError.details && (
+                      <p className="text-sm text-gray-300 ml-6 whitespace-pre-line">
+                        {deleteError.details}
                       </p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <p className="text-gray-300">
-                    <span className="font-bold text-white">{runToDelete.boss_name}</span> kaydını silmek istediğinizden emin misiniz?
-                  </p>
-                  <div className="bg-yellow-900/20 border border-yellow-700/30 rounded p-3 text-sm text-yellow-500">
-                    <p className="font-bold flex items-center gap-2 mb-1">
-                      <AlertCircle size={14} /> DİKKAT
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 ml-1 opacity-90">
-                      <li>Bu işlem geri alınamaz.</li>
-                      <li>Otomatik satılan barların tutarı clan bakiyesinden düşülecektir.</li>
-                      <li>Tüm drop ve katılımcı kayıtları silinecektir.</li>
-                    </ul>
+                    )}
+                    {deleteError.payment_count > 0 && (
+                      <div className="mt-3 p-3 bg-red-950/30 rounded border border-red-800/30">
+                        <p className="text-xs text-red-300 font-bold">ÖNERİLEN ÇÖZÜM:</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          1. Bu pencereyi kapatın<br />
+                          2. Katılımcılar listesinden yapılan ödemeleri "Ödendi" durumundan çıkarın<br />
+                          3. Tekrar silmeyi deneyin
+                        </p>
+                      </div>
+                    )}
                   </div>
-                </>
+                ) : (
+                  <>
+                    <p className="text-gray-300">
+                      <span className="font-bold text-white">{runToDelete.boss_name}</span> kaydını silmek istediğinizden emin misiniz?
+                    </p>
+                    <div className="bg-yellow-900/20 border border-yellow-700/30 rounded p-3 text-sm text-yellow-500">
+                      <p className="font-bold flex items-center gap-2 mb-1">
+                        <AlertCircle size={14} /> DİKKAT
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 ml-1 opacity-90">
+                        <li>Bu işlem geri alınamaz.</li>
+                        <li>Otomatik satılan barların tutarı clan bakiyesinden düşülecektir.</li>
+                        <li>Tüm drop ve katılımcı kayıtları silinecektir.</li>
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirmModal(false)}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-bold transition"
+                >
+                  {deleteError ? 'Kapat' : 'İptal'}
+                </button>
+
+                {!deleteError && (
+                  <button
+                    onClick={() => handleDeleteRun(runToDelete.id)}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition flex items-center gap-2"
+                  >
+                    <X size={16} />
+                    Evet, Sil
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Debt Edit Modal */}
+      {showDebtEditModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4 backdrop-blur-sm">
+          <div className="bg-gray-800 w-full max-w-md rounded-2xl border border-gray-700 shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-white uppercase italic tracking-tighter">Borç Yönetimi</h3>
+              <button onClick={() => setShowDebtEditModal(false)} className="text-gray-400 hover:text-white transition">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">Toplam Borç Tutarı (G)</label>
+                  <input
+                    type="number"
+                    value={newDebtAmount}
+                    onChange={(e) => setNewDebtAmount(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-red-500 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">Borç Açıklaması</label>
+                  <textarea
+                    value={newDebtExplanation}
+                    onChange={(e) => setNewDebtExplanation(e.target.value)}
+                    placeholder="Örn: 1. Ay Clan Pelerin Borcu"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-red-500 transition resize-none text-sm"
+                    rows="4"
+                  ></textarea>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex gap-4">
+              <button onClick={() => setShowDebtEditModal(false)} className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition">İptal</button>
+              <button
+                onClick={handleUpdateDebt}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black transition shadow-xl"
+              >
+                GÜNCELLE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Debt Detail Modal */}
+      {showDebtDetailModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[140] p-4 backdrop-blur-sm">
+          <div className="bg-gray-800 w-full max-w-md rounded-2xl border border-gray-700 shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-white uppercase italic tracking-tighter">Borç Detayları</h3>
+              <button onClick={() => setShowDebtDetailModal(false)} className="text-gray-400 hover:text-white transition">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="bg-gray-900/50 p-6 rounded-xl border border-red-900/20 text-center">
+                <div className="text-sm text-gray-500 mb-2 uppercase font-bold tracking-widest">Kalan Toplam Borç</div>
+                <div className="text-4xl font-black text-red-500 font-mono italic">
+                  {clanDebt.toLocaleString('tr-TR')} <span className="text-xl">G</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Borç Açıklaması</label>
+                <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 text-gray-300 text-sm leading-relaxed min-h-[100px] italic">
+                  {debtExplanation || 'Herhangi bir açıklama bulunmuyor.'}
+                </div>
+              </div>
+
+              {(userData?.clanRole === 'leader' || userData?.role === 'owner') && (
+                <div className="bg-yellow-900/10 border border-yellow-500/10 rounded-lg p-3 text-xs text-yellow-500 font-medium italic">
+                  * Borç yönetimi için borç kartındaki "+" ikonuna tıklayınız. Run detaylarından borç ödemesi yapılabilir.
+                </div>
               )}
             </div>
+            <div className="p-6 bg-gray-900/50 border-t border-gray-700">
+              <button onClick={() => setShowDebtDetailModal(false)} className="w-full px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition">Kapat</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-            {/* Footer */}
-            <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-end gap-3">
-              <button
-                onClick={() => setShowDeleteConfirmModal(false)}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-bold transition"
-              >
-                {deleteError ? 'Kapat' : 'İptal'}
+      {/* Tax Edit Modal */}
+      {showTaxEditModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4 backdrop-blur-sm">
+          <div className="bg-gray-800 w-full max-w-sm rounded-2xl border border-gray-700 shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-white uppercase italic tracking-tighter">Hazine Yönetimi</h3>
+              <button onClick={() => setShowTaxEditModal(false)} className="text-gray-400 hover:text-white transition">
+                <X size={24} />
               </button>
+            </div>
+            <div className="p-8 space-y-6">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">Hazine Bakiyesi (G)</label>
+                <input
+                  type="number"
+                  value={newTaxAmount}
+                  onChange={(e) => setNewTaxAmount(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-blue-500 transition"
+                />
+              </div>
+              <div className="bg-blue-900/10 border border-blue-500/10 rounded-lg p-3 text-xs text-blue-400 font-medium italic">
+                Bu alandan hazine bakiyesini manuel olarak güncelleyebilirsiniz. Run barlarının Tax'a aktarımı otomatiğe bağlanacaktır.
+              </div>
+            </div>
+            <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex gap-4">
+              <button onClick={() => setShowTaxEditModal(false)} className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition">İptal</button>
+              <button
+                onClick={handleUpdateTax}
+                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black transition shadow-xl"
+              >
+                GÜNCELLE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-              {!deleteError && (
+      {/* Borç Uyarı / Hata Modalı */}
+      {debtWarningModal.open && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] p-4 backdrop-blur-sm">
+          <div className={`bg-gray-800 w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden animate-in zoom-in duration-200 ${debtWarningModal.type === 'error' ? 'border-red-500/30' : 'border-yellow-500/30'
+            }`}>
+            <div className={`p-6 border-b border-gray-700 flex items-center gap-3 ${debtWarningModal.type === 'error' ? 'bg-red-900/20' : 'bg-yellow-900/20'
+              }`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${debtWarningModal.type === 'error' ? 'bg-red-600/30' : 'bg-yellow-600/30'
+                }`}>
+                {debtWarningModal.type === 'error' ? (
+                  <X size={20} className="text-red-400" />
+                ) : (
+                  <TrendingUp size={20} className="text-yellow-400" />
+                )}
+              </div>
+              <div>
+                <h3 className={`text-lg font-bold uppercase tracking-tight ${debtWarningModal.type === 'error' ? 'text-red-400' : 'text-yellow-400'
+                  }`}>{debtWarningModal.title}</h3>
+                <p className={`text-[10px] font-bold uppercase ${debtWarningModal.type === 'error' ? 'text-red-600' : 'text-yellow-600'
+                  }`}>
+                  {debtWarningModal.type === 'error' ? 'İşlem Gerçekleştirilemedi' : 'Dikkat — İşlem Onayı Gerekli'}
+                </p>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-gray-300 leading-relaxed">{debtWarningModal.message}</p>
+            </div>
+            <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex gap-3">
+              {debtWarningModal.type === 'error' ? (
                 <button
-                  onClick={() => handleDeleteRun(runToDelete.id)}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition flex items-center gap-2"
+                  onClick={() => setDebtWarningModal({ open: false, type: 'warning', title: '', message: '', onConfirm: null })}
+                  className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition"
                 >
-                  <X size={16} />
-                  Evet, Sil
+                  Tamam
                 </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setDebtWarningModal({ open: false, type: 'warning', title: '', message: '', onConfirm: null })}
+                    className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    onClick={() => debtWarningModal.onConfirm?.()}
+                    className="flex-1 px-4 py-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-xl font-black transition shadow-xl"
+                  >
+                    DEVAM ET
+                  </button>
+                </>
               )}
             </div>
           </div>

@@ -2,11 +2,8 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 const pool = new Pool({
-  host: process.env.PG_HOST,
-  port: process.env.PG_PORT,
-  user: process.env.PG_USER,
-  password: process.env.PG_PASSWORD,
-  database: process.env.PG_DATABASE,
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
 });
 
 class GatheringController {
@@ -15,22 +12,22 @@ class GatheringController {
     try {
       const { userId } = req.params;
       const { date, profession } = req.query;
-      
+
       let query = 'SELECT * FROM gathering_logs WHERE user_id = $1';
       const params = [userId];
-      
+
       if (date) {
         query += ' AND date = $2';
         params.push(date);
       }
-      
+
       if (profession) {
         query += ` AND profession = $${params.length + 1}`;
         params.push(profession);
       }
-      
+
       query += ' ORDER BY date DESC, profession, item_name';
-      
+
       const result = await pool.query(query, params);
       res.json(result.rows);
     } catch (error) {
@@ -44,17 +41,17 @@ class GatheringController {
     try {
       const { userId, date } = req.params;
       const { profession } = req.query;
-      
+
       let query = 'SELECT * FROM gathering_logs WHERE user_id = $1 AND date = $2';
       const params = [userId, date];
-      
+
       if (profession) {
         query += ' AND profession = $3';
         params.push(profession);
       }
-      
+
       query += ' ORDER BY profession, item_name';
-      
+
       const result = await pool.query(query, params);
       res.json(result.rows);
     } catch (error) {
@@ -68,7 +65,7 @@ class GatheringController {
     try {
       const { userId } = req.params;
       const { date, profession, itemName, count, price, duration } = req.body;
-      
+
       const result = await pool.query(
         `INSERT INTO gathering_logs (user_id, date, profession, item_name, count, price, duration)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -77,7 +74,7 @@ class GatheringController {
          RETURNING *`,
         [userId, date, profession, itemName, count || 0, price || 0, duration || 0]
       );
-      
+
       res.status(201).json(result.rows[0]);
     } catch (error) {
       console.error('Gathering log create error:', error);
@@ -90,7 +87,7 @@ class GatheringController {
     try {
       const { id } = req.params;
       const { count, price, duration } = req.body;
-      
+
       const result = await pool.query(
         `UPDATE gathering_logs 
          SET count = COALESCE($1, count), 
@@ -101,11 +98,11 @@ class GatheringController {
          RETURNING *`,
         [count, price, duration, id]
       );
-      
+
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Gathering log not found' });
       }
-      
+
       res.json(result.rows[0]);
     } catch (error) {
       console.error('Gathering log update error:', error);
@@ -117,16 +114,16 @@ class GatheringController {
   static async deleteLog(req, res) {
     try {
       const { id } = req.params;
-      
+
       const result = await pool.query(
         'DELETE FROM gathering_logs WHERE id = $1 RETURNING *',
         [id]
       );
-      
+
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Gathering log not found' });
       }
-      
+
       res.json({ message: 'Gathering log deleted successfully' });
     } catch (error) {
       console.error('Gathering log delete error:', error);
@@ -138,16 +135,16 @@ class GatheringController {
   static async getDuration(req, res) {
     try {
       const { userId, date, profession } = req.params;
-      
+
       const result = await pool.query(
         'SELECT duration FROM gathering_logs WHERE user_id = $1 AND date = $2 AND profession = $3 LIMIT 1',
         [userId, date, profession]
       );
-      
+
       if (result.rows.length === 0) {
         return res.json({ duration: 0 });
       }
-      
+
       res.json(result.rows[0]);
     } catch (error) {
       console.error('Gathering duration get error:', error);
@@ -160,7 +157,7 @@ class GatheringController {
     try {
       const { userId, date, profession } = req.params;
       const { duration } = req.body;
-      
+
       const result = await pool.query(
         `INSERT INTO gathering_logs (user_id, date, profession, item_name, duration)
          VALUES ($1, $2, $3, '__duration__', $4)
@@ -169,7 +166,7 @@ class GatheringController {
          RETURNING *`,
         [userId, date, profession, duration || 0]
       );
-      
+
       res.json(result.rows[0]);
     } catch (error) {
       console.error('Gathering duration update error:', error);

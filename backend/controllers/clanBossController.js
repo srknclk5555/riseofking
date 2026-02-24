@@ -52,6 +52,21 @@ const createClanBossRun = async (req, res) => {
                 [runId, userId, creatorMainChar]
             );
 
+            // SKORALAMA HAZIRLIĞI: Puan miktarını belirle
+            const hasRealDrops = drops && drops.some(d => {
+                const dName = d.itemName ? d.itemName.toLowerCase() : '';
+                return dName && !dName.includes('silver bar') && !dName.includes('gold bar') && !dName.includes('golden bar');
+            });
+            const pointsEarned = hasRealDrops ? 12 : 10;
+
+            // Oluşturucuya puan ver
+            await client.query(
+                `UPDATE clan_members 
+                 SET participation_score = GREATEST(0, participation_score + $1) 
+                 WHERE clan_id = $2 AND user_id = $3`,
+                [pointsEarned, clanId, userId]
+            );
+
             // 2. Diğer katılımcıları ekle (Sadece klan üyesi olanlar)
             if (participants && Array.isArray(participants)) {
                 for (const pUid of participants) {
@@ -76,18 +91,9 @@ const createClanBossRun = async (req, res) => {
                                 [runId, pUid, pMainChar]
                             );
 
-                            // SKORLAMA: +10 Puan (Katılım) + 2 Puan (Drop varsa)
-                            // Not: Silver/Gold bar drop sayılmaz
-                            const hasRealDrops = drops && drops.some(d => {
-                                const dName = d.itemName ? d.itemName.toLowerCase() : '';
-                                return dName && !dName.includes('silver bar') && !dName.includes('gold bar') && !dName.includes('golden bar');
-                            });
-
-                            const pointsEarned = hasRealDrops ? 12 : 10;
-
                             await client.query(
                                 `UPDATE clan_members 
-                                 SET participation_score = participation_score + $1 
+                                 SET participation_score = GREATEST(0, participation_score + $1) 
                                  WHERE clan_id = $2 AND user_id = $3`,
                                 [pointsEarned, clanId, pUid]
                             );
@@ -196,8 +202,8 @@ const createClanBossRun = async (req, res) => {
                 const formattedAmount = new Intl.NumberFormat('tr-TR').format(barData.amount);
                 await client.query(
                     `INSERT INTO clan_bank_transactions (clan_id, user_id, amount, transaction_type, description, related_run_id)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [clanId, userId, barData.amount, 'item_sold', `${barData.item.name} otomatik nakite çevrildi (+${formattedAmount})`, runId]
+                     VALUES ($1, $2, $3, 'item_sold', $4, $5)`,
+                    [clanId, userId, barData.amount, `${barData.item.name} otomatik nakite çevrildi (+${formattedAmount})`, runId]
                 );
                 console.log(`  ✓ Transaction logged`);
                 console.log(`💚 [BOSS RUN] ${barData.name} auto-sold successfully!`);
@@ -366,6 +372,13 @@ const getClanBossRunDetails = async (req, res) => {
         );
         const totalSoldAmount = parseFloat(salesResult.rows[0]?.total_sold_amount || 0);
 
+        // Hazine işlemlerini (Tax/Borç) hesapla
+        const treasuryResult = await pool.query(
+            "SELECT SUM(ABS(amount)) as total_treasury FROM clan_bank_transactions WHERE related_run_id = $1 AND transaction_type IN ('debt_payment', 'tax_transfer')",
+            [id]
+        );
+        const totalTreasuryAmount = parseFloat(treasuryResult.rows[0]?.total_treasury || 0);
+
         // Güvenlik kontrolü: Kullanıcı klan üyesi mi?
         const memberCheck = await pool.query(
             'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2',
@@ -378,12 +391,13 @@ const getClanBossRunDetails = async (req, res) => {
 
         // Katılımcıları getir
         const participantsResult = await pool.query(
-            `SELECT p.*, u.username, u."mainCharacter" as main_character
+            `SELECT p.*, u.username, u."mainCharacter" as main_character, cm.status as member_status
              FROM clan_boss_participants p
              JOIN users u ON p.user_id = u.uid
+             LEFT JOIN clan_members cm ON p.user_id = cm.user_id AND cm.clan_id = $2
              WHERE p.run_id = $1 AND p.left_at IS NULL
              ORDER BY p.joined_at`,
-            [id]
+            [id, run.clan_id]
         );
 
         // Get viewer's nickname data to map participant nicknames
@@ -433,6 +447,8 @@ const getClanBossRunDetails = async (req, res) => {
         // Dropları getir ve durumlarını kontrol et
         const dropsResult = await pool.query(
             `SELECT d.*, i.name as item_name,
+             d.is_treasury_processed,
+             d.treasury_action_type,
              EXISTS (
                  SELECT 1 FROM clan_bank_items bi 
                  WHERE bi.run_id = d.run_id 
@@ -486,6 +502,7 @@ const getClanBossRunDetails = async (req, res) => {
             participants: participantsWithNicknames,
             drops: drops,
             total_sold_amount: totalSoldAmount,
+            total_treasury_amount: totalTreasuryAmount,
             has_unsold_items: hasUnsoldItems
         });
     } catch (error) {
@@ -521,7 +538,13 @@ const getClanBossRuns = async (req, res) => {
                     (SELECT COALESCE(SUM(sale_amount), 0) FROM clan_bank_sold s WHERE s.run_id::text = r.id::text) as total_sold_amount,
                     (SELECT COALESCE(SUM(amount), 0) FROM clan_payments cp WHERE cp.run_id::text = r.id::text) as total_paid_amount,
                     (
-                        SELECT json_agg(json_build_object('item_name', i.name, 'quantity', dr.quantity))
+                        SELECT json_agg(json_build_object(
+                            'id', dr.id,
+                            'item_name', i.name, 
+                            'quantity', dr.quantity,
+                            'is_treasury_processed', dr.is_treasury_processed,
+                            'treasury_action_type', dr.treasury_action_type
+                        ))
                         FROM clan_boss_drops dr
                         JOIN items i ON dr.item_id = i.id
                         WHERE dr.run_id::text = r.id::text
@@ -695,30 +718,70 @@ const updateParticipantPayStatus = async (req, res) => {
 
 // Kayıttan kendini çıkar
 const removeSelfFromRun = async (req, res) => {
+    const client = await pool.connect();
     try {
         const userId = req.user?.uid;
         const { runId } = req.params;
 
-        await pool.query(
+        await client.query('BEGIN');
+
+        // 1. Run bilgilerini al (puan reversal için)
+        const runRes = await client.query('SELECT clan_id FROM clan_boss_runs WHERE id = $1', [runId]);
+        if (runRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Kayıt bulunamadı' });
+        }
+        const clanId = runRes.rows[0].clan_id;
+
+        // 2. Drop kontrolü yap (gerçek drop var mı?)
+        const dropsResult = await client.query(
+            `SELECT i.name 
+             FROM clan_boss_drops d
+             JOIN items i ON d.item_id = i.id
+             WHERE d.run_id = $1`,
+            [runId]
+        );
+
+        const hasRealDrops = dropsResult.rows.some(d => {
+            const dName = d.name ? d.name.toLowerCase() : '';
+            return dName && !dName.includes('silver bar') && !dName.includes('gold bar') && !dName.includes('golden bar');
+        });
+
+        const pointsToReverse = hasRealDrops ? 12 : 10;
+
+        // 3. Puanı geri al
+        await client.query(
+            `UPDATE clan_members 
+             SET participation_score = GREATEST(0, participation_score - $1) 
+             WHERE clan_id = $2 AND user_id = $3`,
+            [pointsToReverse, clanId, userId]
+        );
+
+        // 4. Katılımcıyı sil
+        await client.query(
             'DELETE FROM clan_boss_participants WHERE run_id = $1 AND user_id = $2',
             [runId, userId]
         );
 
-        res.status(200).json({ message: 'Kayıttan ayrıldınız' });
+        await client.query('COMMIT');
+        res.status(200).json({ message: 'Kayıttan ayrıldınız ve puanınız güncellendi' });
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('❌ Kayıttan ayrılma hatası:', error);
         res.status(500).json({ error: 'Ayrılma işlemi başarısız' });
+    } finally {
+        client.release();
     }
 };
 
 // Kayıttan başka bir kullanıcıyı çıkar (sadece lider veya oluşturucu)
 const removeParticipantFromRun = async (req, res) => {
+    const client = await pool.connect();
     try {
         const userId = req.user?.uid;
         const { runId, participantUserId } = req.params;
 
         // Yetki kontrolü: Kaydı oluşturan kişi veya klan lideri mi?
-        const runInfo = await pool.query(
+        const runInfo = await client.query(
             'SELECT clan_id, created_by FROM clan_boss_runs WHERE id = $1',
             [runId]
         );
@@ -726,7 +789,7 @@ const removeParticipantFromRun = async (req, res) => {
         if (runInfo.rows.length === 0) return res.status(404).json({ error: 'Kayıt bulunamadı' });
 
         const { clan_id, created_by } = runInfo.rows[0];
-        const userRole = await pool.query(
+        const userRole = await client.query(
             'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
             [clan_id, userId]
         );
@@ -738,15 +801,46 @@ const removeParticipantFromRun = async (req, res) => {
             return res.status(403).json({ error: 'Sadece lider veya kaydı açan kişi başka bir kullanıcıyı kayıttan çıkarabilir' });
         }
 
-        await pool.query(
+        await client.query('BEGIN');
+
+        // 1. Drop kontrolü yap (gerçek drop var mı?)
+        const dropsResult = await client.query(
+            `SELECT i.name 
+             FROM clan_boss_drops d
+             JOIN items i ON d.item_id = i.id
+             WHERE d.run_id = $1`,
+            [runId]
+        );
+
+        const hasRealDrops = dropsResult.rows.some(d => {
+            const dName = d.name ? d.name.toLowerCase() : '';
+            return dName && !dName.includes('silver bar') && !dName.includes('gold bar') && !dName.includes('golden bar');
+        });
+
+        const pointsToReverse = hasRealDrops ? 12 : 10;
+
+        // 2. Puanı geri al
+        await client.query(
+            `UPDATE clan_members 
+             SET participation_score = participation_score - $1 
+             WHERE clan_id = $2 AND user_id = $3`,
+            [pointsToReverse, clan_id, participantUserId]
+        );
+
+        // 3. Katılımcıyı sil
+        await client.query(
             'DELETE FROM clan_boss_participants WHERE run_id = $1 AND user_id = $2',
             [runId, participantUserId]
         );
 
-        res.status(200).json({ message: 'Katılımcı kayıttan çıkarıldı' });
+        await client.query('COMMIT');
+        res.status(200).json({ message: 'Katılımcı kayıttan çıkarıldı ve klan puanı güncellendi' });
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('❌ Katılımcı kayıttan çıkarma hatası:', error);
         res.status(500).json({ error: 'Çıkarma işlemi başarısız' });
+    } finally {
+        client.release();
     }
 };
 
@@ -775,6 +869,12 @@ const deleteClanBossRun = async (req, res) => {
         }
 
         await client.query('BEGIN');
+
+        // 0. FK KISITI TEMİZLİĞİ: Silinecek run'a bağlı işlemleri NULL'a çek (500 hatasını önlemek için)
+        await client.query(
+            'UPDATE clan_bank_transactions SET related_run_id = NULL WHERE related_run_id = $1',
+            [id]
+        );
 
         // 2. ÖDEME KONTROLÜ - Eğer ödeme varsa silmeyi engelle
         const paymentsCheck = await client.query(
@@ -808,9 +908,9 @@ const deleteClanBossRun = async (req, res) => {
         if (totalSoldAmount > 0) {
             console.log(`💸 [RUN DELETE] Reversing sold items balance: -${totalSoldAmount.toLocaleString()}`);
 
-            // Bakiyeden düş
+            // Bakiyeden düş (Negatif bakiye kontrolü ile)
             await client.query(
-                'UPDATE clan_balances SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP WHERE clan_id = $2',
+                'UPDATE clan_balances SET balance = GREATEST(0, balance - $1), updated_at = CURRENT_TIMESTAMP WHERE clan_id = $2',
                 [totalSoldAmount, clan_id]
             );
 
@@ -856,7 +956,7 @@ const deleteClanBossRun = async (req, res) => {
         for (const p of participantsResult.rows) {
             await client.query(
                 `UPDATE clan_members 
-                 SET participation_score = participation_score - $1 
+                 SET participation_score = GREATEST(0, participation_score - $1) 
                  WHERE clan_id = $2 AND user_id = $3`,
                 [pointsToReverse, clan_id, p.user_id]
             );

@@ -24,4 +24,13 @@ router.get('/:clanId/transactions', clanBankController.getTransactions);
 // Satılan itemler
 router.get('/:clanId/sold', clanBankController.getSoldItems);
 
+// Borç yönetimi
+router.post('/debt', clanBankController.updateClanDebt);
+
+// Kasa yönetimi
+router.post('/tax', clanBankController.updateClanTax);
+
+// Hazine işlemleri (Borç öde / Kasaya gönder)
+router.post('/treasury-action', clanBankController.processTreasuryAction);
+
 module.exports = router;

@@ -1,3 +1,5 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const pool = require('./config/database');
 
 const migrationSql = `
@@ -81,6 +83,22 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clan_members' AND column_name='participation_score') THEN
         ALTER TABLE clan_members ADD COLUMN participation_score INTEGER DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clan_members' AND column_name='status') THEN
+        ALTER TABLE clan_members ADD COLUMN status VARCHAR(20) DEFAULT 'active';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clan_members' AND column_name='left_at') THEN
+        ALTER TABLE clan_members ADD COLUMN left_at TIMESTAMP;
+    END IF;
+    -- clan_balances table updates
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clan_balances' AND column_name='clan_debt') THEN
+        ALTER TABLE clan_balances ADD COLUMN clan_debt NUMERIC DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clan_balances' AND column_name='clan_tax') THEN
+        ALTER TABLE clan_balances ADD COLUMN clan_tax NUMERIC DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clan_balances' AND column_name='debt_explanation') THEN
+        ALTER TABLE clan_balances ADD COLUMN debt_explanation TEXT;
     END IF;
 END $$;
 

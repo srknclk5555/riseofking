@@ -18,14 +18,14 @@ const getClanBank = async (req, res) => {
             return res.status(403).json({ error: 'Bu bilgileri görme yetkiniz yok' });
         }
 
-        // Bakiye getir
+        // Bakiye, Borç ve Kasa bilgilerini getir
         const balanceResult = await pool.query(
-            'SELECT balance FROM clan_balances WHERE clan_id = $1',
+            'SELECT balance, clan_debt, clan_tax, debt_explanation FROM clan_balances WHERE clan_id = $1',
             [clanId]
         );
 
-        // Eğer bakiye kaydı yoksa 0 olarak dön
-        const balance = balanceResult.rows.length > 0 ? balanceResult.rows[0].balance : 0;
+        // Eğer bakiye kaydı yoksa varsayılan değerleri kullan
+        const balanceInfo = balanceResult.rows.length > 0 ? balanceResult.rows[0] : { balance: 0, clan_debt: 0, clan_tax: 0, debt_explanation: '' };
 
         // Mevcut itemleri getir (available)
         const itemsResult = await pool.query(
@@ -34,13 +34,183 @@ const getClanBank = async (req, res) => {
         );
 
         res.status(200).json({
-            balance,
+            balance: balanceInfo.balance,
+            clan_debt: balanceInfo.clan_debt,
+            clan_tax: balanceInfo.clan_tax,
+            debt_explanation: balanceInfo.debt_explanation,
             items: itemsResult.rows,
             role: memberCheck.rows[0].role
         });
     } catch (error) {
         console.error('❌ Clan bankası getirme hatası:', error);
         res.status(500).json({ error: 'Banka bilgileri yüklenemedi' });
+    }
+};
+
+// Clan Borcu Güncelle (Sadece Lider)
+const updateClanDebt = async (req, res) => {
+    try {
+        const { clanId, clanDebt: amount, debtExplanation: explanation } = req.body;
+        const userId = req.user?.uid;
+
+        const memberCheck = await pool.query(
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            [clanId, userId]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
+            return res.status(403).json({ error: 'Yalnızca klan lideri borç bilgisini düzenleyebilir' });
+        }
+
+        await pool.query(
+            `INSERT INTO clan_balances (clan_id, clan_debt, debt_explanation) 
+             VALUES ($1, $2, $3)
+             ON CONFLICT (clan_id) DO UPDATE 
+             SET clan_debt = $2, debt_explanation = $3, updated_at = CURRENT_TIMESTAMP`,
+            [clanId, amount, explanation]
+        );
+
+        res.status(200).json({ message: 'Klan borç bilgisi güncellendi' });
+    } catch (error) {
+        console.error('❌ Borç güncelleme hatası:', error);
+        res.status(500).json({ error: 'İşlem başarısız' });
+    }
+};
+
+// Clan Kasası Güncelle (Sadece Lider)
+const updateClanTax = async (req, res) => {
+    try {
+        const { clanId, clanTax: amount } = req.body;
+        const userId = req.user?.uid;
+
+        const memberCheck = await pool.query(
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            [clanId, userId]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
+            return res.status(403).json({ error: 'Yalnızca klan lideri klan kasasını düzenleyebilir' });
+        }
+
+        await pool.query(
+            `INSERT INTO clan_balances (clan_id, clan_tax) 
+             VALUES ($1, $2)
+             ON CONFLICT (clan_id) DO UPDATE 
+             SET clan_tax = $2, updated_at = CURRENT_TIMESTAMP`,
+            [clanId, amount]
+        );
+
+        res.status(200).json({ message: 'Klan kasası güncellendi' });
+    } catch (error) {
+        console.error('❌ Kasa güncelleme hatası:', error);
+        res.status(500).json({ error: 'İşlem başarısız' });
+    }
+};
+
+// Hazine İşlemi (Bakiyeden Borca veya Kasaya Transfer)
+const processTreasuryAction = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { clanId, amount, actionType, relatedRunId: runId, description, dropId } = req.body; // actionType: 'pay_debt' or 'send_to_tax'
+        const userId = req.user?.uid;
+
+        const memberCheck = await pool.query(
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            [clanId, userId]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
+            return res.status(403).json({ error: 'Yalnızca klan lideri bu işlemi yapabilir' });
+        }
+
+        await client.query('BEGIN');
+
+        // MÜKERRER İŞLEM KONTROLÜ (Drop bazlı)
+        if (dropId) {
+            const dropCheck = await client.query(
+                'SELECT is_treasury_processed FROM clan_boss_drops WHERE id = $1',
+                [dropId]
+            );
+            if (dropCheck.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'İlgili drop kaydı bulunamadı.' });
+            }
+            if (dropCheck.rows[0].is_treasury_processed) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Bu item zaten hazineye aktarılmış veya borç ödemesinde kullanılmış.' });
+            }
+        }
+
+        // Bakiye ve borç durumunu tek sorguda çek
+        const balanceRes = await client.query('SELECT balance, clan_debt FROM clan_balances WHERE clan_id = $1', [clanId]);
+        const currentBalance = parseFloat(balanceRes.rows[0]?.balance || 0);
+        const currentDebt = parseFloat(balanceRes.rows[0]?.clan_debt || 0);
+
+        if (currentBalance < amount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: `Yetersiz bakiye. Mevcut: ${currentBalance.toLocaleString('tr-TR')} G, Gerekli: ${parseFloat(amount).toLocaleString('tr-TR')} G` });
+        }
+
+        if (actionType === 'pay_debt') {
+            if (currentDebt <= 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Ödenecek aktif borç bulunmuyor.' });
+            }
+            if (amount > currentDebt) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({
+                    error: `Ödenmek istenen tutar (${parseFloat(amount).toLocaleString('tr-TR')} G) mevcut borçtan (${currentDebt.toLocaleString('tr-TR')} G) fazladır.`,
+                    code: 'AMOUNT_EXCEEDS_DEBT',
+                    currentDebt
+                });
+            }
+
+            await client.query(`
+                UPDATE clan_balances 
+                SET balance = GREATEST(0, balance - $1), clan_debt = GREATEST(0, clan_debt - $1), updated_at = CURRENT_TIMESTAMP
+                WHERE clan_id = $2
+            `, [amount, clanId]);
+
+            await client.query(`
+                INSERT INTO clan_bank_transactions (clan_id, user_id, amount, transaction_type, description, related_run_id)
+                VALUES ($1, $2, $3, 'debt_payment', $4, $5)
+            `, [clanId, userId, -amount, description || 'Klan borcu ödemesi', runId]);
+
+        } else if (actionType === 'send_to_tax') {
+            await client.query(`
+                UPDATE clan_balances 
+                SET balance = GREATEST(0, balance - $1), clan_tax = clan_tax + $1, updated_at = CURRENT_TIMESTAMP
+                WHERE clan_id = $2
+            `, [amount, clanId]);
+
+            await client.query(`
+                INSERT INTO clan_bank_transactions (clan_id, user_id, amount, transaction_type, description, related_run_id)
+                VALUES ($1, $2, $3, 'tax_transfer', $4, $5)
+            `, [clanId, userId, -amount, description || 'Klan kasasına aktarım', runId]);
+        } else {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Geçersiz işlem tipi.' });
+        }
+
+        // Drop üzerinden işlem yapıldıysa işlenmiş olarak işaretle
+        if (dropId) {
+            const updateRes = await client.query(
+                `UPDATE clan_boss_drops 
+                 SET is_treasury_processed = true, treasury_action_type = $1 
+                 WHERE id = $2`,
+                [actionType, dropId]
+            );
+            if (updateRes.rowCount === 0) {
+                console.warn(`⚠️ [TREASURY] Drop ID=${dropId} bulunamadı, durum güncellenemedi.`);
+            }
+        }
+
+        await client.query('COMMIT');
+        res.status(200).json({ message: 'İşlem başarıyla gerçekleşti' });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Hazine işlemi beklenmedik hata:', error);
+        res.status(500).json({ error: 'Sunucu hatası, lütfen tekrar deneyin.' });
+    } finally {
+        client.release();
     }
 };
 
@@ -184,9 +354,9 @@ const payParticipant = async (req, res) => {
             throw new Error('Klan bakiyesi yetersiz');
         }
 
-        // 2. clan_balances'dan düş
+        // 2. clan_balances'dan düş (Ekstra güvenlik için GREATEST)
         await client.query(
-            'UPDATE clan_balances SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP WHERE clan_id = $2',
+            'UPDATE clan_balances SET balance = GREATEST(0, balance - $1), updated_at = CURRENT_TIMESTAMP WHERE clan_id = $2',
             [amount, clanId]
         );
 
@@ -360,5 +530,8 @@ module.exports = {
     payParticipant,
     addManualItem,
     getTransactions,
-    getSoldItems
+    getSoldItems,
+    updateClanDebt,
+    updateClanTax,
+    processTreasuryAction
 };
