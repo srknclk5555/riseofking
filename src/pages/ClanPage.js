@@ -86,7 +86,9 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     }
     return String(level);
   };
-
+  const fetchSoldItems = () => {
+    console.log("sold items yenileniyor");
+  };
   const BowIcon = ({ size = 16, className = "" }) => (
     <svg
       width={size}
@@ -121,6 +123,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [clanMembers, setClanMembers] = useState([]);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [joinedClans, setJoinedClans] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -180,7 +183,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [deleteError, setDeleteError] = useState(null);
   const [runToDelete, setRunToDelete] = useState(null);
   const [soldItemsView, setSoldItemsView] = useState('grid'); // 'list' or 'grid'
-
+  const [showManualItemModal, setShowManualItemModal] = useState(false);
   const queryClient = useQueryClient();
 
   // SOCKET.IO: Clan Odasına Katılma ve Event Dinleme
