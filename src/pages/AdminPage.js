@@ -7,6 +7,9 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
   const [activeAdminTab, setActiveAdminTab] = useState("Profile");
   const [activeSubTab, setActiveSubTab] = useState("K\u0130\u015f\u0130SEL");
   const [mainCharacter, setMainCharacter] = useState("");
+  const [characterClass, setCharacterClass] = useState("");
+  const [level, setLevel] = useState("");
+  const [awakening, setAwakening] = useState("0");
   const [friendNick, setFriendNick] = useState("");
   const [linkInputs, setLinkInputs] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
@@ -16,14 +19,22 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
     const loadProfile = async () => {
       try {
         const p = await userService.getProfile(uid);
-        if (typeof p?.mainCharacter === 'string') {
-          setMainCharacter(p.mainCharacter || '');
+        if (typeof p?.mainCharacter === 'string' || p?.profile) {
+          setMainCharacter(p?.mainCharacter || '');
+          setCharacterClass(p?.profile?.characterClass || '');
+          setLevel(p?.profile?.level || '');
+          setAwakening(p?.profile?.awakening?.toString() || '0');
           return;
         }
       } catch (e) {
         // Fallback to Firestore state if backend not reachable
       }
-      if (userData) setMainCharacter(userData.profile?.mainCharacter || "");
+      if (userData) {
+        setMainCharacter(userData.profile?.mainCharacter || "");
+        setCharacterClass(userData.profile?.characterClass || "");
+        setLevel(userData.profile?.level || "");
+        setAwakening(userData.profile?.awakening?.toString() || "0");
+      }
     };
     loadProfile();
   }, [uid, userData]);
@@ -31,7 +42,12 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
   const saveProfile = async () => {
     try {
       // PostgreSQL'e gönder
-      await userService.updateProfile(uid, { mainCharacter });
+      await userService.updateProfile(uid, {
+        mainCharacter,
+        characterClass,
+        level: level ? Number(level) : undefined,
+        awakening: awakening ? Number(awakening) : undefined
+      });
 
       // Firestore sync removed - using strict PostgreSQL
       /*
@@ -160,10 +176,68 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
           {activeSubTab === "Kişisel" && (
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-md">
               <h3 className="text-white font-bold mb-4">Kişisel Bilgiler</h3>
-              {!mainCharacter && <p className="text-red-400 text-sm mb-3 font-semibold">UYARI: Karakter adı boş.</p>}
-              <div className="flex gap-2">
-                <input className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white" value={mainCharacter} onChange={e => setMainCharacter(e.target.value)} placeholder="Oyun Nick (Main)" />
-                <button onClick={saveProfile} className="bg-green-600 px-3 rounded text-white"><Save size={18} /></button>
+              <div className="flex flex-col gap-3">
+                {!mainCharacter && <p className="text-red-400 text-sm font-semibold">UYARI: Karakter adı boş.</p>}
+
+                {/* Karakter Adı */}
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">Oyun Nick (Main)</label>
+                  <input className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white" value={mainCharacter} onChange={e => setMainCharacter(e.target.value)} placeholder="Oyun Nick" />
+                </div>
+
+                {/* Sınıf */}
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">Karakter Sınıfı</label>
+                  <select className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white" value={characterClass} onChange={e => setCharacterClass(e.target.value)}>
+                    <option value="">Sınıf Seçiniz</option>
+                    <option value="Warrior">Warrior</option>
+                    <option value="Rogue">Rogue</option>
+                    <option value="Mage">Mage</option>
+                    <option value="Priest">Priest</option>
+                  </select>
+                </div>
+
+                {/* Seviye (Level) */}
+                <div>
+                  <label className="text-gray-400 text-xs mb-1 block">Seviye (1-85)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="85"
+                    className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white"
+                    value={level}
+                    onChange={e => {
+                      let val = e.target.value;
+                      if (val !== '') {
+                        val = Number(val);
+                        if (val > 85) val = 85;
+                        if (val < 1) val = 1;
+                        if (val !== 85) setAwakening("0");
+                      }
+                      setLevel(val);
+                    }}
+                    placeholder="Örn: 85"
+                  />
+                </div>
+
+                {/* Uyanış (Awakening) - Sadece Level 85 için geçerli */}
+                {Number(level) === 85 && (
+                  <div>
+                    <label className="text-gray-400 text-xs mb-1 block">Awakening</label>
+                    <select className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white" value={awakening} onChange={e => setAwakening(e.target.value)}>
+                      <option value="0">0</option>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                    </select>
+                  </div>
+                )}
+
+                <button onClick={saveProfile} className="bg-green-600 p-2 rounded text-white flex justify-center items-center gap-2 mt-2">
+                  <Save size={18} /> Kaydet
+                </button>
               </div>
             </div>
           )}

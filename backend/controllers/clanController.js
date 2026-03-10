@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const socketManager = require('../socket/socketManager');
 
 // Tüm klanları getir
 const getAllClans = async (req, res) => {
@@ -10,8 +11,7 @@ const getAllClans = async (req, res) => {
         tag, 
         description, 
         owner_id, 
-        created_at,
-        settings
+        created_at
       FROM clans 
       ORDER BY created_at DESC
     `);
@@ -26,6 +26,14 @@ const getAllClans = async (req, res) => {
 const getUserClans = async (req, res) => {
   try {
     const { userId } = req.params;
+    const requesterId = req.user?.uid;
+
+    if (!requesterId) return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+
+    // Güvenlik: Kullanıcı sadece kendi klan listesini görebilmeli
+    if (userId !== requesterId) {
+      return res.status(403).json({ error: 'Sadece kendi klan listenizi görebilirsiniz' });
+    }
 
     // Kullanıcının sahibi olduğu klanlar ve katıldığı klanlar
     const result = await pool.query(`
@@ -44,9 +52,10 @@ const getUserClans = async (req, res) => {
       LEFT JOIN (
         SELECT clan_id, COUNT(*) as count
         FROM clan_members
+        WHERE status = 'active'
         GROUP BY clan_id
       ) member_counts ON c.id = member_counts.clan_id
-      WHERE c.owner_id = $1 OR cm.user_id IS NOT NULL
+      WHERE (c.owner_id = $1 OR cm.user_id IS NOT NULL) AND (cm.status = 'active' OR c.owner_id = $1)
       ORDER BY c.created_at DESC
     `, [userId]);
 
@@ -70,7 +79,10 @@ function generateClanCode() {
 // Yeni klan oluştur
 const createClan = async (req, res) => {
   try {
-    const { name, tag, description, owner_id, settings } = req.body;
+    const owner_id = req.user?.uid; // 🔒 Güvenlik: Body yerine token'dan al
+    const { name, tag, description, settings } = req.body;
+
+    if (!owner_id) return res.status(401).json({ error: 'Yetkilendirme gerekli' });
 
     // Owner'ın zaten bir klanı olup olmadığını kontrol et
     const existingClan = await pool.query(
@@ -141,6 +153,7 @@ const getClanById = async (req, res) => {
        LEFT JOIN (
          SELECT clan_id, COUNT(*) as count
          FROM clan_members
+         WHERE status = 'active'
          GROUP BY clan_id
        ) member_counts ON c.id = member_counts.clan_id
        WHERE c.id = $1`,
@@ -170,12 +183,22 @@ const getClanMembers = async (req, res) => {
       return res.status(400).json({ error: 'Klan ID gerekli' });
     }
 
-    // 1. Klan liderini (owner) bul
+    // 1. Klan üyeliği ve yetki kontrolü
+    const memberCheck = await pool.query(
+      'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
+      [clanId, viewerId]
+    );
+
     const clanResult = await pool.query('SELECT owner_id FROM clans WHERE id = $1', [clanId]);
     if (clanResult.rows.length === 0) {
       return res.status(404).json({ error: 'Klan bulunamadı' });
     }
     const leaderId = clanResult.rows[0].owner_id;
+
+    // Eğer klan sahibi değilse ve üye de değilse erişimi engelle
+    if (leaderId !== viewerId && memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Bu klanın üye listesini görmeye yetkiniz yok' });
+    }
 
     // 2. Üyeleri ve onların temel bilgilerini getir
     const membersResult = await pool.query(`
@@ -186,7 +209,8 @@ const getClanMembers = async (req, res) => {
         cm.participation_score,
         COALESCE(acp.total_acp, 0) as total_acp,
         u."mainCharacter" as char_name,
-        u.username
+        u.username,
+        u.profile as user_profile
       FROM clan_members cm
       LEFT JOIN users u ON cm.user_id = u.uid
       LEFT JOIN (
@@ -228,7 +252,7 @@ const getClanMembers = async (req, res) => {
       if (f && f.uid && f.nickname) leaderNicknames[f.uid] = f.nickname;
     });
 
-    // 4. Her üye için isim çözümleme yap
+    // 4. Her üye için isim çözümleme yap ve profil verilerini çıkar
     const resolvedMembers = members.map(member => {
       let resolvedNickname = '';
 
@@ -249,10 +273,15 @@ const getClanMembers = async (req, res) => {
         resolvedNickname = member.char_name || member.username;
       }
 
+      const profileData = member.user_profile || {};
+
       return {
         ...member,
         display_name: member.char_name || member.username, // UI için display_name
-        nickname: resolvedNickname // Öncelikli gösterilecek isim
+        nickname: resolvedNickname, // Öncelikli gösterilecek isim
+        characterClass: profileData.characterClass,
+        level: profileData.level,
+        awakening: profileData.awakening
       };
     });
 
@@ -268,6 +297,23 @@ const addMembersToClan = async (req, res) => {
   try {
     const { clanId } = req.params;
     const { userIds } = req.body; // Array of user IDs
+    const requesterId = req.user?.uid;
+
+    if (!requesterId) return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+
+    // Yetki kontrolü: Sadece klan lideri veya sahibi üye ekleyebilir
+    const requesterRole = await pool.query(
+      'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
+      [clanId, requesterId]
+    );
+    const clanOwner = await pool.query('SELECT owner_id FROM clans WHERE id = $1', [clanId]);
+
+    const isOwner = clanOwner.rows[0]?.owner_id === requesterId;
+    const isLeader = requesterRole.rows[0]?.role === 'leader';
+
+    if (!isOwner && !isLeader) {
+      return res.status(403).json({ error: 'Sadece klan lideri veya sahibi üye ekleyebilir' });
+    }
 
     if (!Array.isArray(userIds) || userIds.length === 0) {
       return res.status(400).json({ error: 'Geçersiz kullanıcı listesi' });
@@ -278,22 +324,33 @@ const addMembersToClan = async (req, res) => {
       await client.query('BEGIN');
 
       for (const userId of userIds) {
-        // Zaten üye mi kontrol et
+        // Zaten kayıt var mı kontrol et (aktif ya da inactive)
         const existing = await client.query(
-          'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+          'SELECT status FROM clan_members WHERE clan_id = $1 AND user_id = $2',
           [clanId, userId]
         );
 
         if (existing.rows.length === 0) {
+          // Hiç kaydı yok: yeni ekle
           await client.query(
-            'INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES ($1, $2, $3, NOW())',
+            'INSERT INTO clan_members (clan_id, user_id, role, joined_at, status) VALUES ($1, $2, $3, NOW(), \'active\')',
             [clanId, userId, 'member']
           );
+        } else if (existing.rows[0].status === 'inactive') {
+          // Daha önce atılmış: yeniden aktif et
+          await client.query(
+            'UPDATE clan_members SET status = \'active\', joined_at = NOW(), left_at = NULL, role = \'member\' WHERE clan_id = $1 AND user_id = $2',
+            [clanId, userId]
+          );
         }
+        // Zaten aktifse bir şey yapma
       }
 
       await client.query('COMMIT');
       res.status(200).json({ message: 'Üyeler başarıyla eklendi' });
+
+      // SOCKET.IO
+      socketManager.sendToClan(clanId, 'CLAN_MEMBER_UPDATED', { action: 'add' });
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -310,15 +367,30 @@ const addMembersToClan = async (req, res) => {
 const applyToClan = async (req, res) => {
   try {
     const { clanId } = req.params;
-    const { userId } = req.body;
+    const userId = req.user?.uid; // Body yerine token'dan al (Güvenlik)
+
+    if (!userId) return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+
+    // Zaten aktif üye mi kontrol et
+    const existing = await pool.query(
+      'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
+      [clanId, userId]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Zaten bu klanın üyesisiniz' });
+    }
 
     // Basitçe üyeliğe ekleyelim (başvuru tablosu yoksa)
     await pool.query(
-      'INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES ($1, $2, $3, NOW())',
+      'INSERT INTO clan_members (clan_id, user_id, role, joined_at, status) VALUES ($1, $2, $3, NOW(), \'active\')',
       [clanId, userId, 'member']
     );
 
-    res.status(200).json({ message: 'Başvuru yapıldı' });
+    res.status(200).json({ message: 'Başvuru onaylandı ve klana katıldınız' });
+
+    // SOCKET.IO
+    socketManager.sendToClan(clanId, 'CLAN_MEMBER_UPDATED', { action: 'join' });
   } catch (error) {
     console.error('❌ Klana başvuru hatası:', error);
     res.status(500).json({ error: 'Başvuru yapılamadı' });
@@ -330,6 +402,18 @@ const updateClan = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, tag, description, settings } = req.body;
+    const userId = req.user?.uid;
+
+    if (!userId) return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+
+    // Sahiplik kontrolü
+    const clanCheck = await pool.query('SELECT owner_id FROM clans WHERE id = $1', [id]);
+    if (clanCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Clan bulunamadı' });
+    }
+    if (clanCheck.rows[0].owner_id !== userId) {
+      return res.status(403).json({ error: 'Sadece klan sahibi klanı güncelleyebilir' });
+    }
 
     const result = await pool.query(
       `UPDATE clans 
@@ -339,11 +423,10 @@ const updateClan = async (req, res) => {
       [name, tag, description, settings, id]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Clan bulunamadı' });
-    }
-
     res.status(200).json(result.rows[0]);
+
+    // SOCKET.IO
+    socketManager.sendToClan(id, 'CLAN_UPDATED', { action: 'update' });
   } catch (error) {
     console.error('❌ Clan güncelleme hatası:', error);
     res.status(500).json({ error: 'Clan güncellenemedi' });
@@ -354,6 +437,18 @@ const updateClan = async (req, res) => {
 const deleteClan = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+
+    // Sahiplik kontrolü
+    const clanCheck = await pool.query('SELECT owner_id FROM clans WHERE id = $1', [id]);
+    if (clanCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Clan bulunamadı' });
+    }
+    if (clanCheck.rows[0].owner_id !== userId) {
+      return res.status(403).json({ error: 'Sadece klan sahibi klanı silebilir' });
+    }
 
     const client = await pool.connect();
     try {
@@ -365,13 +460,11 @@ const deleteClan = async (req, res) => {
       // Sonra klanı sil
       const result = await client.query('DELETE FROM clans WHERE id = $1 RETURNING *', [id]);
 
-      if (result.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'Clan bulunamadı' });
-      }
-
       await client.query('COMMIT');
       res.status(200).json({ message: 'Clan başarıyla silindi' });
+
+      // SOCKET.IO
+      socketManager.sendToClan(id, 'CLAN_DELETED', { clanId: id });
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -416,23 +509,52 @@ const getAvailableUsers = async (req, res) => {
     }
 
     const otherPlayers = userResult.rows[0].other_players || {};
-    const friendIds = Object.values(otherPlayers)
+    const otherPlayersList = Object.values(otherPlayers);
+    const friendIds = otherPlayersList
       .filter(player => player && player.uid && player.uid !== 'null' && player.uid !== null)
       .map(player => player.uid);
 
-    if (friendIds.length === 0) {
-      return res.status(200).json([]);
-    }
+    // UID'si olmayan ancak username/nickname'i olanları da bulalım
+    const unlinkedNicknames = otherPlayersList
+      .filter(player => player && (!player.uid || player.uid === 'null') && (player.username || player.nickname))
+      .map(player => (player.username || player.nickname).trim());
 
     // Nickname haritası oluştur (UID -> Nickname)
     const nicknames = {};
-    Object.values(otherPlayers).forEach(p => {
+    otherPlayersList.forEach(p => {
       if (p && p.uid && p.nickname) {
         nicknames[p.uid] = p.nickname;
       }
     });
 
-    // Arkadaş listesinde olan ve SADECE BU KLANIN üyesi olmayan kullanıcıları getir
+    if (unlinkedNicknames.length > 0) {
+      // Bu isimlere sahip kullanıcıları veritabanında ara
+      const resolvedUsers = await pool.query(
+        `SELECT uid, username, "mainCharacter" FROM users WHERE (username = ANY($1) OR "mainCharacter" = ANY($1)) AND uid IS NOT NULL`,
+        [unlinkedNicknames]
+      );
+
+      resolvedUsers.rows.forEach(row => {
+        if (!friendIds.includes(row.uid)) {
+          friendIds.push(row.uid);
+
+          // Arkadaş listesinde bu isimle eşleşen kaydın nickname'ini kullan
+          const originalFriend = otherPlayersList.find(p =>
+          (p.username?.trim() === row.username || p.nickname?.trim() === row.username ||
+            p.username?.trim() === row.mainCharacter || p.nickname?.trim() === row.mainCharacter)
+          );
+          if (originalFriend && originalFriend.nickname) {
+            nicknames[row.uid] = originalFriend.nickname;
+          }
+        }
+      });
+    }
+
+    if (friendIds.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // Arkadaş listesinde olan ve SADECE BU KLANIN aktif üyesi olmayan kullanıcıları getir
     const result = await pool.query(`
       SELECT 
         u.uid as id,
@@ -445,7 +567,8 @@ const getAvailableUsers = async (req, res) => {
         AND NOT EXISTS (
           SELECT 1 FROM clan_members cm 
           WHERE cm.user_id = u.uid 
-          AND cm.clan_id = ANY($2)  -- Sadece bu kullanıcının klan(lar)ı
+          AND cm.clan_id = ANY($2)
+          AND cm.status = 'active'
         )
       LIMIT 100
     `, [friendIds, userClanIds]);
@@ -510,6 +633,10 @@ const removeMemberFromClan = async (req, res) => {
     );
 
     res.status(200).json({ message: 'Kullanıcı klandan çıkarıldı' });
+
+    // SOCKET.IO
+    socketManager.sendToClan(clanId, 'CLAN_MEMBER_UPDATED', { action: 'remove', userId });
+    socketManager.sendToUser(userId, 'CLAN_REMOVED', { clanId });
   } catch (error) {
     console.error('❌ Üye çıkarma hatası:', error);
     res.status(500).json({ error: 'Üye çıkarılamadı', details: error.message });
@@ -666,6 +793,9 @@ const sendClanMessage = async (req, res) => {
     );
 
     res.status(201).json(insertResult.rows[0]);
+
+    // SOCKET.IO
+    socketManager.sendToClan(clanId, 'CLAN_MESSAGE_RECEIVED', insertResult.rows[0]);
   } catch (error) {
     console.error('❌ Mesaj gönderme hatası:', error);
     res.status(500).json({ error: 'Mesaj gönderilemedi' });
@@ -732,6 +862,20 @@ const getClanACPHistory = async (req, res) => {
   try {
     const { clanId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
+    const requesterId = req.user?.uid;
+
+    if (!requesterId) return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+
+    // Üyelik kontrolü
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
+      [clanId, requesterId]
+    );
+    const clanOwner = await pool.query('SELECT owner_id FROM clans WHERE id = $1', [clanId]);
+
+    if (clanOwner.rows[0]?.owner_id !== requesterId && memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Bağış geçmişini görmek için klan üyesi olmalısınız' });
+    }
 
     const result = await pool.query(
       `SELECT d.id, d.user_id, d.amount, d.donation_date, d.created_at, 
@@ -746,7 +890,64 @@ const getClanACPHistory = async (req, res) => {
       [clanId, limit, offset]
     );
 
-    res.status(200).json(result.rows);
+    const history = result.rows;
+    const leaderId = clanOwner.rows[0]?.owner_id;
+
+    // Viewer ve Leader'ın arkadaş listelerini (other_players) çek
+    let viewerFriends = {};
+    let leaderFriends = {};
+
+    if (requesterId) {
+      const viewerRes = await pool.query('SELECT other_players FROM users WHERE uid = $1', [requesterId]);
+      viewerFriends = viewerRes.rows[0]?.other_players || {};
+    }
+
+    if (leaderId && leaderId !== requesterId) {
+      const leaderRes = await pool.query('SELECT other_players FROM users WHERE uid = $1', [leaderId]);
+      leaderFriends = leaderRes.rows[0]?.other_players || {};
+    } else if (leaderId === requesterId) {
+      leaderFriends = viewerFriends;
+    }
+
+    // Nickname haritaları oluştur (UID -> Nickname)
+    const viewerNicknames = {};
+    Object.values(viewerFriends).forEach(f => {
+      if (f && f.uid && f.nickname) viewerNicknames[f.uid] = f.nickname;
+    });
+
+    const leaderNicknames = {};
+    Object.values(leaderFriends).forEach(f => {
+      if (f && f.uid && f.nickname) leaderNicknames[f.uid] = f.nickname;
+    });
+
+    // Her kayıt için isim çözümleme yap
+    const resolvedHistory = history.map(record => {
+      let resolvedNickname = '';
+
+      // Kural 1: Kendisi mi? -> main_character
+      if (record.user_id === requesterId) {
+        resolvedNickname = record.main_character || record.username;
+      }
+      // Kural 2: Viewer'ın arkadaş listesinde var mı?
+      else if (viewerNicknames[record.user_id]) {
+        resolvedNickname = viewerNicknames[record.user_id];
+      }
+      // Kural 3: Liderin arkadaş listesinde var mı?
+      else if (leaderNicknames[record.user_id]) {
+        resolvedNickname = leaderNicknames[record.user_id];
+      }
+      // Kural 4: Kendi mainCharacter'ı
+      else {
+        resolvedNickname = record.main_character || record.username;
+      }
+
+      return {
+        ...record,
+        nickname: resolvedNickname
+      };
+    });
+
+    res.status(200).json(resolvedHistory);
   } catch (error) {
     console.error('❌ ACP geçmişi getirme hatası:', error);
     res.status(500).json({ error: 'ACP geçmişi alınamadı' });
@@ -829,6 +1030,20 @@ const getDailyACP = async (req, res) => {
   try {
     const { clanId } = req.params;
     const { date } = req.query; // YYYY-MM-DD formatında
+    const requesterId = req.user?.uid;
+
+    if (!requesterId) return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+
+    // Üyelik kontrolü: Sadece klan üyeleri günlük ACP verisine erişebilir
+    const memberCheck = await pool.query(
+      `SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = 'active'`,
+      [clanId, requesterId]
+    );
+    const clanOwner = await pool.query('SELECT owner_id FROM clans WHERE id = $1', [clanId]);
+
+    if (clanOwner.rows[0]?.owner_id !== requesterId && memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Bu verilere erişmek için klan üyesi olmalısınız' });
+    }
 
     if (!date) {
       return res.status(400).json({ error: 'Tarih parametresi gerekli' });

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Crown, Users, Plus, X, Search, Sword, Database, MessageSquare, AlertCircle, ArrowRight, UserPlus, Calendar, Coins, UserCheck, UserX, Tag, TrendingUp, BarChart2, PieChart as PieIcon, Wallet, UserMinus } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Crown, Users, Plus, X, Search, Sword, Database, MessageSquare, AlertCircle, ArrowRight, UserPlus, Calendar, Coins, UserCheck, Tag, TrendingUp, BarChart2, PieChart as PieIcon, Wallet, UserMinus, Shield, Flame, TrendingDown } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
@@ -7,15 +8,119 @@ import { clanService } from '../services/clanService';
 import { itemService } from '../services/api';
 import clanBossService from '../services/clanBossService';
 import clanBankService from '../services/clanBankService';
+import socketService from '../services/socketService';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+// Shallow Fever Drop Whitelist
+const SHALLOW_FEVER_DROPS = [
+  // Belts
+  "belt of anticipation (+0)",
+  "belt of battle mage (+0)",
+  "belt of iron legionnaire (+0)",
+  "belt of repel (+0)",
+  "blessing belt (+0)",
+  "cursed belt (+0)",
+  "elven belt (+0)",
+  "lionheart defender belt (+0)",
+  "lorna's belt (+0)",
+  "moon belt (+0)",
+  "sun belt (+0)",
+  "fire resistance belt (+0)",
+  "gaia belt (+0)",
+  "ice resistance belt (+0)",
+  "lightning resistance belt (+0)",
+  "longevity belt (+0)",
+  // Rings
+  "blue dragon ring (+0)",
+  "chaos ring (+0)",
+  "divine ring (+0)",
+  "warlord ring (+0)",
+  "assassin ring (+0)",
+  "black soul ring (+0)",
+  "brawler's ring (+0)",
+  "cleric's ring (+0)",
+  "holy priest ring (+0)",
+  "lifebloom ring (+0)",
+  "knight's ring (+0)",
+  "mystic ring (+0)",
+  "ranger's ring (+0)",
+  "warlock's ring (+0)",
+  // Pendants
+  "amulet of chaos (+0)",
+  "blue dragon pendant (+0)",
+  "divine pendant (+0)",
+  "warlord pendant (+0)",
+  "assassin pendant (+0)",
+  "brawler's pendant (+0)",
+  "cleric's pendant (+0)",
+  "holy priest pendant (+0)",
+  "knight's pendant (+0)",
+  "mystic pendant (+0)",
+  "ranger's pendant (+0)",
+  "warlock's pendant (+0)",
+  // Earrings
+  "blue dragon earring (+0)",
+  "chaos earring (+0)",
+  "divine earring (+0)",
+  "warlord earring (+0)",
+  "assassin earring (+0)",
+  "brawler's earring (+0)",
+  "cleric's earring (+0)",
+  "earring of persistence (+0)",
+  "holy priest earring (+0)",
+  "knight's earring (+0)",
+  "lifebloom earring (+0)",
+  "mystic earring (+0)",
+  "ranger's earring (+0)",
+  "warlock's earring (+0)",
+  // Bars
+  "silver bar",
+  "golden bar"
+];
 
 const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip }) => {
+  // Helpers
+  const formatLevelDisplay = (level, awakening) => {
+    if (!level) return '';
+    if (level === 85 && awakening > 0) {
+      return `85/${awakening}`;
+    }
+    return String(level);
+  };
+
+  const BowIcon = ({ size = 16, className = "" }) => (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M18 2C11 2 6 7 6 12C6 17 11 22 18 22" />
+      <path d="M18 2L18 22" />
+      <path d="M22 12H6" />
+      <path d="M10 8L6 12L10 16" />
+    </svg>
+  );
+
+  const getClassIcon = (className) => {
+    switch (className) {
+      case 'Warrior': return <Sword size={16} className="text-red-500 drop-shadow-[0_0_3px_rgba(239,68,68,0.5)]" />;
+      case 'Rogue': return <BowIcon size={16} className="text-emerald-500 drop-shadow-[0_0_3px_rgba(16,185,129,0.5)]" />;
+      case 'Mage': return <Flame size={16} className="text-orange-500 drop-shadow-[0_0_3px_rgba(249,115,22,0.5)]" />;
+      case 'Priest': return <Shield size={16} className="text-yellow-400 drop-shadow-[0_0_3px_rgba(250,204,21,0.5)]" />;
+      default: return null;
+    }
+  };
+
+
   const [myClans, setMyClans] = useState([]);
   const [clanMembers, setClanMembers] = useState([]);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [joinedClans, setJoinedClans] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -37,7 +142,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
 
   // Clan Boss States
   const [clanBossRuns, setClanBossRuns] = useState([]);
-  const [bossFilters, setBossFilters] = useState({ itemName: '', playerName: '', date: '' });
+  const [bossStatusFilter, setBossStatusFilter] = useState('open'); // 'open', 'closed', 'all'
+  const [bossFilters, setBossFilters] = useState({ itemName: '', playerName: '', startDate: '', endDate: '' });
   const [selectedRun, setSelectedRun] = useState(null);
   const [showCreateRunModal, setShowCreateRunModal] = useState(false);
   const [showRunDetailModal, setShowRunDetailModal] = useState(false);
@@ -49,6 +155,9 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [newDropQuantity, setNewDropQuantity] = useState(1);
   const [items, setItems] = useState([]);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
+  const [runScreenshotUrl, setRunScreenshotUrl] = useState('');
+  const [showImageViewerModal, setShowImageViewerModal] = useState(false);
+  const [imageViewerUrl, setImageViewerUrl] = useState('');
 
   // Clan Bank States
   const [bankData, setBankData] = useState({ balance: 0, items: [], role: 'member' });
@@ -61,7 +170,6 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [saleQuantity, setSaleQuantity] = useState(1);
   const [saleDate, setSaleDate] = useState('');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showManualItemModal, setShowManualItemModal] = useState(false);
   const [paymentTarget, setPaymentTarget] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDescription, setPaymentDescription] = useState('');
@@ -72,6 +180,69 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [deleteError, setDeleteError] = useState(null);
   const [runToDelete, setRunToDelete] = useState(null);
   const [soldItemsView, setSoldItemsView] = useState('grid'); // 'list' or 'grid'
+
+  const queryClient = useQueryClient();
+
+  // SOCKET.IO: Clan Odasına Katılma ve Event Dinleme
+  useEffect(() => {
+    if (!selectedClan?.id || !socketService) return;
+
+    const clanId = selectedClan.id;
+    console.log(`[Socket] Joining clan room: ${clanId}`);
+    socketService.emit('join_clan', clanId);
+
+    // Event Dinleyicileri
+    const handleBossRunUpdate = () => {
+      console.log('[Socket] Boss run updated, invalidating...');
+      queryClient.invalidateQueries({ queryKey: ['bossRuns', clanId] });
+    };
+
+    const handleBankUpdate = () => {
+      console.log('[Socket] Bank updated, invalidating...');
+      queryClient.invalidateQueries({ queryKey: ['clanBank', clanId] });
+      queryClient.invalidateQueries({ queryKey: ['bankTransactions', clanId] });
+      queryClient.invalidateQueries({ queryKey: ['soldItems', clanId] });
+    };
+
+    const handleMemberUpdate = () => {
+      console.log('[Socket] Members updated, invalidating...');
+      queryClient.invalidateQueries({ queryKey: ['clanMembers', clanId] });
+    };
+
+    const handleMessageReceived = (msg) => {
+      console.log('[Socket] Message received, invalidating...');
+      queryClient.invalidateQueries({ queryKey: ['clanMessages', clanId] });
+    };
+
+    const handleClanUpdate = () => {
+      console.log('[Socket] Clan settings updated, invalidating...');
+      queryClient.invalidateQueries({ queryKey: ['userClans', uid] });
+    };
+
+    socketService.on('CLAN_BOSS_RUN_UPDATED', handleBossRunUpdate);
+    socketService.on('CLAN_BANK_UPDATED', handleBankUpdate);
+    socketService.on('CLAN_MEMBER_UPDATED', handleMemberUpdate);
+    socketService.on('CLAN_MESSAGE_RECEIVED', handleMessageReceived);
+    socketService.on('CLAN_UPDATED', handleClanUpdate);
+
+    return () => {
+      console.log(`[Socket] Leaving clan room: ${clanId}`);
+      socketService.emit('leave_clan', clanId);
+      socketService.off('CLAN_BOSS_RUN_UPDATED');
+      socketService.off('CLAN_BANK_UPDATED');
+      socketService.off('CLAN_MEMBER_UPDATED');
+      socketService.off('CLAN_MESSAGE_RECEIVED');
+      socketService.off('CLAN_UPDATED');
+    };
+  }, [selectedClan?.id, queryClient, uid]);
+
+  // Bulk Payment States
+  const [showBulkPaymentModal, setShowBulkPaymentModal] = useState(false);
+  const [bulkPaymentTarget, setBulkPaymentTarget] = useState(null);
+  const [bulkPaymentRuns, setBulkPaymentRuns] = useState([]);
+  const [selectedBulkRuns, setSelectedBulkRuns] = useState(new Set());
+  const [customBulkAmount, setCustomBulkAmount] = useState('');
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
 
   // Clan Debt & Tax States
   const [clanDebt, setClanDebt] = useState(0);
@@ -89,6 +260,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   // New Search States
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
   const [participantSearch, setParticipantSearch] = useState('');
+  const [acpDonationSearch, setAcpDonationSearch] = useState(''); // Ekleme ekranı için arama
   const [acpHistorySearch, setAcpHistorySearch] = useState('');
   const [acpDateFilterType, setAcpDateFilterType] = useState('all'); // all, today, week, range
   const [acpStartDate, setAcpStartDate] = useState('');
@@ -125,65 +297,114 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     }
   }, [messages, activeTab]);
 
-  // Mevcut kullanıcıya ait klanları yükle
+  // --- PHASE 3: REACT QUERY INTEGRATION ---
+
+  // 1. User Clans Query
+  const { data: userClansData } = useQuery({
+    queryKey: ['userClans', uid],
+    queryFn: () => clanService.getUserClans(uid),
+    enabled: !!uid,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (userClansData) {
+      const ownedClans = userClansData.filter(clan => clan.owner_id === uid);
+      const joinedClansList = userClansData.filter(clan => clan.owner_id !== uid);
+      setMyClans(ownedClans);
+      setJoinedClans(joinedClansList);
+    }
+  }, [userClansData, uid]);
+
+  // 2. Clan Boss Runs Query
+  const { data: bossRunsData } = useQuery({
+    queryKey: ['bossRuns', selectedClan?.id],
+    queryFn: () => clanBossService.getClanBossRuns(selectedClan.id),
+    enabled: !!selectedClan?.id && (activeTab === 'boss' || activeTab === 'members' || activeTab === 'reports'),
+    staleTime: 30 * 1000,
+  });
+
+  useEffect(() => {
+    if (bossRunsData) {
+      setClanBossRuns(bossRunsData);
+    }
+  }, [bossRunsData]);
+
+  // Deprecated manual effects removed/replaced by Query enabled flags
+  /*
   useEffect(() => {
     fetchUserClans();
   }, [uid]);
 
-  // Tab değiştiğinde mesajları yükle
-  useEffect(() => {
-    if (activeTab === 'messages' && selectedClan) {
-      fetchClanMessages();
-    }
-  }, [activeTab, selectedClan]);
-
-  // Tab değiştiğinde clan boss run'larını yükle
   useEffect(() => {
     if (activeTab === 'boss' && selectedClan) {
       fetchClanBossRuns();
     }
   }, [activeTab, selectedClan]);
+  */
 
-  // Tab değiştiğinde clan bankasını yükle
+
+  // 3. Clan Bank Query
+  const { data: bankQueryData } = useQuery({
+    queryKey: ['clanBank', selectedClan?.id],
+    queryFn: () => clanBankService.getBankDetails(selectedClan.id),
+    enabled: !!selectedClan?.id && activeTab === 'bank',
+    staleTime: 1 * 60 * 1000,
+  });
+
   useEffect(() => {
-    if (activeTab === 'bank' && selectedClan) {
-      fetchClanBank();
-      fetchTransactions();
-      fetchSoldItems();
-    }
-  }, [activeTab, selectedClan]);
+    if (bankQueryData) setBankData(bankQueryData);
+  }, [bankQueryData]);
 
-  // Tab değiştiğinde rapor verilerini yükle
+  // 4. Clan Bank Transactions Query
+  const { data: transactionsQueryData } = useQuery({
+    queryKey: ['clanTransactions', selectedClan?.id],
+    queryFn: () => clanBankService.getTransactions(selectedClan.id),
+    enabled: !!selectedClan?.id && activeTab === 'bank',
+    staleTime: 30 * 1000,
+  });
+
   useEffect(() => {
-    if (activeTab === 'reports' && selectedClan) {
-      fetchClanBossRuns();
-      fetchSoldItems();
-    }
-  }, [activeTab, selectedClan]);
+    if (transactionsQueryData) setTransactions(transactionsQueryData);
+  }, [transactionsQueryData]);
 
-  const fetchSoldItems = async () => {
-    try {
-      if (!selectedClan) return;
-      const data = await clanBankService.getSoldItems(selectedClan.id);
-      setSoldItems(data);
-    } catch (error) {
-      console.error('Error fetching sold items:', error);
-    }
-  };
+  // 5. Clan Messages Query (Polling)
+  const { data: messagesQueryData } = useQuery({
+    queryKey: ['clanMessages', selectedClan?.id, messageFilters],
+    queryFn: () => clanService.getClanMessages(selectedClan.id, messageFilters),
+    enabled: !!selectedClan?.id && activeTab === 'messages',
+    refetchInterval: 60000, // Socket.io yedeği olarak 60 saniyede bir (Polling azaltıldı)
+    staleTime: 5000,
+  });
 
-  const fetchUserClans = async () => {
-    try {
-      const userClans = await clanService.getUserClans(uid);
-      const ownedClans = userClans.filter(clan => clan.owner_id === uid);
-      const joinedClansList = userClans.filter(clan => clan.owner_id !== uid);
+  useEffect(() => {
+    if (messagesQueryData) setMessages(messagesQueryData);
+  }, [messagesQueryData]);
 
-      setMyClans(ownedClans);
-      setJoinedClans(joinedClansList);
-    } catch (error) {
-      console.error('Error fetching clans:', error);
-      showNotification('Clanlar yüklenirken hata oluştu.', 'error');
-    }
-  };
+  // 6. Clan Members Query
+  const { data: membersQueryData } = useQuery({
+    queryKey: ['clanMembers', selectedClan?.id],
+    queryFn: () => clanService.getClanMembers(selectedClan.id),
+    enabled: !!selectedClan?.id,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (membersQueryData) setClanMembers(membersQueryData);
+  }, [membersQueryData]);
+
+  // 7. Sold Items Query
+  const { data: soldItemsQueryData } = useQuery({
+    queryKey: ['soldItems', selectedClan?.id],
+    queryFn: () => clanBankService.getSoldItems(selectedClan.id),
+    enabled: !!selectedClan?.id && (activeTab === 'bank' || activeTab === 'reports'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (soldItemsQueryData) setSoldItems(soldItemsQueryData);
+  }, [soldItemsQueryData]);
+
 
   // ACP State
   const [showACPModal, setShowACPModal] = useState(false);
@@ -222,36 +443,17 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     }
   };
 
-  const handleViewClanDashboard = async (clan) => {
-    try {
-      const members = await clanService.getClanMembers(clan.id);
-
-      if (Array.isArray(members)) {
-        setClanMembers(members);
-      } else {
-        console.error('[CLAN] Invalid members data:', members);
-        setClanMembers([]);
-      }
-
-      setSelectedClan(clan);
-      setCurrentView('dashboard');
-    } catch (error) {
-      console.error('[CLAN] Dashboard error:', error);
-      showNotification('Clan detayları yüklenirken hata oluştu.', 'error');
-    }
+  const handleViewClanDashboard = (clan) => {
+    setSelectedClan(clan);
+    setCurrentView('dashboard');
   };
 
-  const refreshClanMembers = async () => {
+  const refreshClanMembers = () => {
     if (!selectedClan) return;
-    try {
-      const members = await clanService.getClanMembers(selectedClan.id);
-      if (Array.isArray(members)) {
-        setClanMembers(members);
-      }
-    } catch (error) {
-      console.error('[CLAN] Error refreshing members:', error);
-    }
+    queryClient.invalidateQueries(['clanMembers', selectedClan.id]);
+    queryClient.invalidateQueries(['bossRuns', selectedClan.id]);
   };
+
 
   const fetchAvailableUsers = async () => {
     try {
@@ -403,7 +605,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       await clanService.removeMemberFromClan(memberToRemove.clanId, memberToRemove.userId);
 
       // Üye listesini yenile
-      const updatedMembers = await clanBossService.getClanMembers(memberToRemove.clanId);
+      const updatedMembers = await clanService.getClanMembers(memberToRemove.clanId);
       setClanMembers(updatedMembers);
 
       // Modal'ı kapat
@@ -417,7 +619,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     }
   };
 
-  // Periyodik olarak mesajları kontrol et (Polling)
+  /*
+  // Periyodik olarak mesajları kontrol et (Polling) - React Query handle ediyor
   useEffect(() => {
     let interval;
     if (activeTab === 'messages' && selectedClan) {
@@ -429,6 +632,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       if (interval) clearInterval(interval);
     };
   }, [activeTab, selectedClan, messageFilters]);
+  */
 
   // --- MESAJLAR ---
   const fetchClanMessages = async (filters = messageFilters, silent = false) => {
@@ -476,10 +680,11 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   };
 
   // Clan Boss Functions
-  const fetchClanBossRuns = async () => {
+  const fetchClanBossRuns = async (clanId = selectedClan?.id, status = bossStatusFilter) => {
+    if (!clanId) return;
     try {
       setIsLoading(true);
-      const runs = await clanService.getClanBossRuns(selectedClan.id);
+      const runs = await clanService.getClanBossRuns(clanId, status, bossFilters.startDate, bossFilters.endDate);
       setClanBossRuns(runs);
     } catch (error) {
       console.error('Clan boss runlari yuklenemedi:', error);
@@ -492,13 +697,18 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const fetchItems = async () => {
     try {
       const itemsData = await itemService.getAllItems();
-      // Sadece name kolonundaki verileri al
-      const itemNames = itemsData.map(item => ({
+
+      // Sadece whitelist'teki (+ Silver/Golden Bar) itemları al
+      const filteredData = itemsData.filter(item =>
+        SHALLOW_FEVER_DROPS.includes(item.name.toLowerCase())
+      );
+
+      const itemNames = filteredData.map(item => ({
         id: item.id,
         name: item.name
       }));
       setItems(itemNames);
-      return itemNames; // Return the items so we can use them immediately
+      return itemNames;
     } catch (error) {
       console.error('Itemlar yüklenemedi:', error);
       // Hata durumunda mock data kullan
@@ -536,7 +746,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       const runData = {
         date: runDate,
         participants: selectedParticipants.map(p => p.user_id),
-        drops: processedDrops
+        drops: processedDrops,
+        screenshotUrl: runScreenshotUrl
       };
 
       await clanService.createClanBossRun(selectedClan.id, runData);
@@ -557,6 +768,23 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     setNewDropItem('');
     setNewDropQuantity(1);
     setShowItemDropdown(false);
+    setRunScreenshotUrl('');
+  };
+
+  // Helper for image URL parsing
+  const extractImageUrl = (input) => {
+    if (!input) return '';
+    const trimmed = input.trim();
+    // HTML img tag extraction
+    const imgMatch = trimmed.match(/<img[^>]+src="([^">]+)"/);
+    if (imgMatch && imgMatch[1]) return imgMatch[1];
+    // BBCode img tag extraction
+    const bbMatch = trimmed.match(/\[img\](.*?)\[\/img\]/i);
+    if (bbMatch && bbMatch[1]) return bbMatch[1];
+    // Direct URL 
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+
+    return trimmed;
   };
 
   const handleViewRunDetails = async (run) => {
@@ -595,35 +823,6 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     }
   };
 
-  const handleRemoveSelfFromRun = async (runId) => {
-    try {
-      await clanService.removeSelfFromRun(runId);
-      showNotification("Run'dan ayrildiniz.", 'success');
-      setShowRunDetailModal(false);
-      fetchClanBossRuns();
-    } catch (error) {
-      console.error("Run'dan ayrilamadi:", error);
-      showNotification("Run'dan ayrilirken hata olustu.", 'error');
-    } finally {
-      refreshClanMembers(); // Sync scores
-    }
-  };
-
-  const handleRemoveParticipantFromRun = async (runId, participantUserId) => {
-    try {
-      await clanService.removeParticipantFromRun(runId, participantUserId);
-      showNotification("Katılımcı run'dan çıkarıldı.", 'success');
-      // Refresh the selected run data to reflect the change
-      const updatedRun = await clanService.getClanBossRunById(runId);
-      setSelectedRun(updatedRun);
-      fetchClanBossRuns(); // Also refresh the list
-    } catch (error) {
-      console.error("Katılımcı run'dan çıkarılamadı:", error);
-      showNotification(`Katılımcı run'dan çıkarılırken hata oluştu: ${error.message}`, 'error');
-    } finally {
-      refreshClanMembers(); // Sync scores
-    }
-  };
 
   const handleDeleteRun = async (runId) => {
     try {
@@ -805,19 +1004,118 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     }
   };
 
-  const handleAddManualBankItem = async (itemName, quantity) => {
+  const handleBulkPaymentOpen = async (member) => {
+    setBulkPaymentTarget(member);
+    setIsBulkLoading(true);
     try {
-      await clanBankService.addManualItem({
-        clanId: selectedClan.id,
-        itemName,
-        quantity
-      });
-      showNotification('İtem bankaya eklendi.', 'success');
-      fetchClanBank();
-    } catch (error) {
-      showNotification('İtem eklenemedi.', 'error');
+      const runs = await clanBankService.getMemberPayableRuns(selectedClan.id, member.user_id);
+      setBulkPaymentRuns(runs);
+      setSelectedBulkRuns(new Set(runs.map(r => r.id))); // Varsayılan olarak hepsini seç
+      setCustomBulkAmount('');
+      setShowBulkPaymentModal(true);
+    } catch (err) {
+      showNotification('Ödenebilir kayıtlar yüklenemedi.', 'error');
+    } finally {
+      setIsBulkLoading(false);
     }
-  }
+  };
+
+  const handleBulkPaymentSubmit = async () => {
+    if (selectedBulkRuns.size === 0) {
+      showNotification('Lütfen en az bir kayıt seçin.', 'error');
+      return;
+    }
+
+    const selectedRunsData = bulkPaymentRuns.filter(r => selectedBulkRuns.has(r.id));
+
+    let payments = [];
+    if (customBulkAmount && parseFloat(customBulkAmount) > 0) {
+      let remainingToDistribute = parseFloat(customBulkAmount);
+      for (const run of selectedRunsData) {
+        if (remainingToDistribute <= 0) break;
+        const amountToPay = Math.min(remainingToDistribute, run.remaining_liquid);
+        if (amountToPay > 0) {
+          payments.push({ runId: run.id, amount: amountToPay });
+          remainingToDistribute -= amountToPay;
+        }
+      }
+    } else {
+      payments = selectedRunsData.map(r => ({ runId: r.id, amount: r.remaining_liquid }));
+    }
+
+    if (payments.length === 0) {
+      showNotification('Ödenecek geçerli bir tutar bulunamadı.', 'error');
+      return;
+    }
+
+    try {
+      setIsSending(true);
+      await clanBankService.bulkPayParticipant({
+        clanId: selectedClan.id,
+        participantUserId: bulkPaymentTarget.user_id,
+        payments
+      });
+      showNotification('Toplu ödeme başarıyla gerçekleştirildi.', 'success');
+      setShowBulkPaymentModal(false);
+      refreshClanMembers();
+      fetchClanBank();
+      fetchTransactions();
+    } catch (err) {
+      showNotification(err.message || 'Ödeme sırasında hata oluştu.', 'error');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Bulk Pay All / Reverse All Participants
+  const handlePayAllParticipants = async () => {
+    if (!selectedRun) return;
+    if (!window.confirm('Tüm katılımcılara alacakları kadar ödeme yapmak istediğinize emin misiniz?')) return;
+
+    try {
+      setIsSending(true);
+      await clanService.bulkUpdateAllPaymentStatus(selectedRun.id, true);
+      showNotification('Tüm katılımcılara ödeme başarıyla yapıldı.', 'success');
+
+      // Refresh everything
+      const updatedRun = await clanService.getClanBossRunDetails(selectedRun.id);
+      setSelectedRun(updatedRun);
+      fetchClanBank();
+      fetchTransactions();
+      fetchClanBossRuns();
+      refreshClanMembers();
+    } catch (error) {
+      console.error('Toplu ödeme hatası:', error);
+      showNotification(error.message || 'Toplu ödeme yapılırken hata oluştu.', 'error');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleReverseAllPayments = async () => {
+    if (!selectedRun) return;
+    if (!window.confirm('Tüm katılımcıların ödemelerini geri almak istediğinize emin misiniz? Bu işlem tüm ödemeleri iptal edecektir.')) return;
+
+    try {
+      setIsSending(true);
+      await clanService.bulkUpdateAllPaymentStatus(selectedRun.id, false);
+      showNotification('Tüm ödemeler başarıyla geri alındı.', 'success');
+
+      // Refresh everything
+      const updatedRun = await clanService.getClanBossRunDetails(selectedRun.id);
+      setSelectedRun(updatedRun);
+      fetchClanBank();
+      fetchTransactions();
+      fetchClanBossRuns();
+      refreshClanMembers();
+    } catch (error) {
+      console.error('Toplu ödeme iptali hatası:', error);
+      showNotification(error.message || 'Ödemeler geri alınırken hata oluştu.', 'error');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
 
   // Clan Debt & Tax Handlers
   const handleUpdateDebt = async () => {
@@ -858,9 +1156,19 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
         relatedRunId: runId,
         dropId: dropId
       });
-      showNotification('İşlem başarıyla gerçekleştirildi.', 'success');
+
+      const message = actionType === 'send_to_tax' ? 'Tax başarıyla gönderildi.' : 'Borç ödemesi başarıyla gerçekleştirildi.';
+      showNotification(message, 'success');
+
       fetchClanBank();
       fetchTransactions();
+
+      // Eğer bir run detayı açıksa ve bu işlem o run ile ilgiliyse modalı yenile
+      if (runId && selectedRun && String(selectedRun.id) === String(runId)) {
+        const updatedRun = await clanService.getClanBossRunDetails(runId);
+        setSelectedRun(updatedRun);
+      }
+
       return true;
     } catch (error) {
       // Kullanıcı dostu hata mesajını göster
@@ -1031,7 +1339,19 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="font-medium">{member.display_name || member.username}</div>
+                  <div className="font-medium flex items-center gap-2">
+                    {member.display_name || member.username}
+                    {member.characterClass && (
+                      <span title={member.characterClass} className="flex items-center">
+                        {getClassIcon(member.characterClass)}
+                      </span>
+                    )}
+                    {member.level && (
+                      <span className="text-xs font-bold bg-gray-800 text-gray-200 px-1.5 rounded border border-gray-600">
+                        Lv {formatLevelDisplay(member.level, member.awakening)}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-sm text-gray-500 capitalize">{member.role}</div>
                   <div className="text-xs text-gray-400">Katılma: {new Date(member.joined_at).toLocaleDateString()}</div>
                 </div>
@@ -1059,15 +1379,19 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   };
 
   const filteredBossRuns = clanBossRuns.filter(run => {
+    // Statü filtresi (Backend zaten filtrelenmiş veriyi gönderiyor ancak güvenlik için burada da tutabiliriz veya all seçeneği için backend'e güvenebiliriz)
+    // Eğer backend'den 'all' çekildiyse burada filtreleme yapmak gerekebilir
+    const matchesStatus = bossStatusFilter === 'all' || run.status === bossStatusFilter;
+
     const matchesItem = !bossFilters.itemName || (run.drops || []).some(d => (d.item_name || '').toLowerCase().includes(bossFilters.itemName.toLowerCase()));
     const matchesPlayer = !bossFilters.playerName || (run.participants || []).some(p =>
       (p.username || '').toLowerCase().includes(bossFilters.playerName.toLowerCase()) ||
       (p.main_character || '').toLowerCase().includes(bossFilters.playerName.toLowerCase()) ||
       (p.nickname || '').toLowerCase().includes(bossFilters.playerName.toLowerCase())
     );
-    const matchesDate = !bossFilters.date || (run.run_date && new Date(run.run_date).toISOString().split('T')[0] === bossFilters.date);
+    const matchesDate = true; // Backend artık bu filtrelemeyi (limitlerle beraber) yapıyor.
 
-    return matchesItem && matchesPlayer && matchesDate;
+    return matchesStatus && matchesItem && matchesPlayer && matchesDate;
   });
 
   // Liste Görünümü
@@ -1606,9 +1930,42 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
         </div>
 
         {activeTab === 'members' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Üye Listesi */}
-            <div className="lg:col-span-2 space-y-4">
+          <div className="flex flex-col gap-6">
+            {/* Bilgi Panelleri (Üstte Yan Yana) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Klan Hakkında */}
+              <div className="bg-gray-800 rounded-2xl border border-gray-700 p-4 shadow-xl">
+                <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                  <AlertCircle size={16} className="text-blue-500" />
+                  Klan Hakkında
+                </h3>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  {selectedClan?.description || 'Bu klan için henüz bir açıklama girilmemiş.'}
+                </p>
+              </div>
+
+              {/* İstatistikler */}
+              <div className="bg-gray-800/50 rounded-2xl border border-gray-700 p-4">
+                <h3 className="text-[10px] font-bold text-gray-400 mb-3 uppercase tracking-wider">İstatistikler</h3>
+                <div className="flex gap-8">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-gray-500 uppercase">Kuruluş</span>
+                    <span className="text-xs text-white font-mono">{new Date(selectedClan?.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-gray-500 uppercase">Seviye</span>
+                    <span className="text-yellow-500 font-bold text-xs">LVL 1</span>
+                  </div>
+                  <div className="flex flex-col border-l border-gray-700/50 pl-8">
+                    <span className="text-[10px] text-gray-500 uppercase">Klan Bakiyesi</span>
+                    <span className="text-green-500 font-bold font-mono text-xs">0 Gold</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Üye Listesi (Tam Genişlik) */}
+            <div className="space-y-4">
               <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden shadow-xl">
                 <div className="p-6 border-b border-gray-700 bg-gray-800/80 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -1638,6 +1995,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                         <th className="px-6 py-4 border-b border-gray-700/50">Katılma Tarihi</th>
                         <th className="px-6 py-4 border-b border-gray-700/50 text-center">Puan</th>
                         <th className="px-6 py-4 border-b border-gray-700/50 text-center">Top. ACP</th>
+                        <th className="px-6 py-4 border-b border-gray-700/50 text-center text-emerald-500">Alacak</th>
                         <th className="px-6 py-4 border-b border-gray-700/50 text-right">İşlemler</th>
                       </tr>
                     </thead>
@@ -1655,7 +2013,19 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                           >
                             <td className="px-6 py-4">
                               <div className="font-bold text-white group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                                {member.nickname || member.display_name || member.username}
+                                <div className="flex items-center gap-2">
+                                  {member.nickname || member.display_name || member.username}
+                                  {member.characterClass && (
+                                    <span title={member.characterClass} className="flex items-center">
+                                      {getClassIcon(member.characterClass)}
+                                    </span>
+                                  )}
+                                  {member.level && (
+                                    <span className="text-[10px] font-bold bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded border border-gray-700">
+                                      Lv {formatLevelDisplay(member.level, member.awakening)}
+                                    </span>
+                                  )}
+                                </div>
                                 {member.user_id === uid && <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">SİZ</span>}
                                 {member.role === 'leader' && <Crown size={14} className="text-yellow-500" />}
                               </div>
@@ -1680,19 +2050,57 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                                 {(member.total_acp || 0).toLocaleString()}
                               </div>
                             </td>
+                            <td className="px-6 py-4 text-center">
+                              {(() => {
+                                let expected = 0;
+                                let earnings = 0;
+                                (clanBossRuns || []).forEach(run => {
+                                  const participants = run.participants || [];
+                                  const p = participants.find(part => part.user_id === member.user_id);
+                                  if (p) {
+                                    const runRevenue = parseFloat(run.total_sold_amount || 0) - parseFloat(run.total_treasury_amount || 0);
+                                    const sharePerPerson = participants.length > 0 ? Math.floor(Math.max(0, runRevenue) / participants.length) : 0;
+                                    earnings += parseFloat(p.paid_amount || 0);
+                                    expected += sharePerPerson;
+                                  }
+                                });
+                                const receivables = Math.max(0, expected - earnings);
+                                return receivables > 0 ? (
+                                  <div className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-900/20 text-emerald-400 rounded-lg text-xs font-bold border border-emerald-500/10 shadow-sm whitespace-nowrap">
+                                    {receivables.toLocaleString('tr-TR')} G
+                                  </div>
+                                ) : (
+                                  <div className="text-gray-500 text-xs font-bold">-</div>
+                                );
+                              })()}
+                            </td>
                             <td className="px-6 py-4 text-right">
-                              {selectedClan.owner_id === uid && member.user_id !== uid && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    startRemoveMember(selectedClan.id, member.user_id, member.username);
-                                  }}
-                                  className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition"
-                                  title="Klandan Çıkar"
-                                >
-                                  <UserMinus size={16} />
-                                </button>
-                              )}
+                              <div className="flex items-center justify-end gap-1">
+                                {selectedClan.owner_id === uid && member.user_id !== uid && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleBulkPaymentOpen(member);
+                                    }}
+                                    className="p-2 text-emerald-500 hover:bg-emerald-900/20 rounded-lg transition"
+                                    title="Toplu Ödeme"
+                                  >
+                                    <Coins size={16} />
+                                  </button>
+                                )}
+                                {selectedClan.owner_id === uid && member.user_id !== uid && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      startRemoveMember(selectedClan.id, member.user_id, member.username);
+                                    }}
+                                    className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition"
+                                    title="Klandan Çıkar"
+                                  >
+                                    <UserMinus size={16} />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1728,39 +2136,6 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   </button>
                 </div>
               )}
-            </div>
-
-            {/* Yan Panel */}
-            <div className="space-y-6">
-              <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 shadow-xl">
-                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                  <AlertCircle size={18} className="text-blue-500" />
-                  Klan Hakkında
-                </h3>
-                <p className="text-gray-400 text-sm leading-relaxed">
-                  {selectedClan?.description || 'Bu klan için henüz bir açıklama girilmemiş.'}
-                </p>
-              </div>
-
-              <div className="bg-gray-800/50 rounded-2xl border border-gray-700 p-6">
-                <h3 className="text-sm font-bold text-gray-400 mb-4 uppercase tracking-wider">İstatistikler</h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500">Kuruluş</span>
-                    <span className="text-white font-mono">{new Date(selectedClan?.created_at).toLocaleDateString()}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500">Seviye</span>
-                    <span className="text-yellow-500 font-bold">LVL 1</span>
-                  </div>
-                  <div className="pt-2 border-t border-gray-700/50">
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-500">Klan Bakiyesi</span>
-                      <span className="text-green-500 font-bold font-mono">0 Gold</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -1846,6 +2221,39 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
 
             {/* Boss Filters Bar */}
             <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 mb-6 flex flex-wrap gap-4 items-end shadow-inner">
+              <div className="flex flex-col gap-2 min-w-[200px]">
+                <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-widest">Kayıt Durumu</label>
+                <div className="flex bg-gray-900 p-1 rounded-lg">
+                  <button
+                    onClick={() => {
+                      setBossStatusFilter('open');
+                      fetchClanBossRuns(selectedClan.id, 'open');
+                    }}
+                    className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase transition ${bossStatusFilter === 'open' ? 'bg-red-600 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Aktif
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBossStatusFilter('closed');
+                      fetchClanBossRuns(selectedClan.id, 'closed');
+                    }}
+                    className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase transition ${bossStatusFilter === 'closed' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Arşiv
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBossStatusFilter('all');
+                      fetchClanBossRuns(selectedClan.id, 'all');
+                    }}
+                    className={`px-4 py-1.5 rounded-md text-[10px] font-black uppercase transition ${bossStatusFilter === 'all' ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Tümü
+                  </button>
+                </div>
+              </div>
+
               <div className="flex-1 min-w-[150px]">
                 <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-widest">İtem Ara</label>
                 <div className="relative">
@@ -1872,18 +2280,49 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   />
                 </div>
               </div>
-              <div className="w-full md:w-auto">
-                <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-widest">Tarih</label>
-                <input
-                  type="date"
-                  value={bossFilters.date}
-                  onChange={(e) => setBossFilters(prev => ({ ...prev, date: e.target.value }))}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 px-4 text-sm text-white focus:border-red-500/50 outline-none transition-colors"
-                />
+              <div className="flex gap-2 items-end">
+                <div className="min-w-[120px]">
+                  <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-widest">Başlangıç</label>
+                  <input
+                    type="date"
+                    value={bossFilters.startDate}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBossFilters(prev => ({ ...prev, startDate: val }));
+                    }}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 px-4 text-sm text-white focus:border-red-500/50 outline-none transition-colors"
+                  />
+                </div>
+                <div className="min-w-[120px]">
+                  <label className="block text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-widest">Bitiş</label>
+                  <input
+                    type="date"
+                    value={bossFilters.endDate}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBossFilters(prev => ({ ...prev, endDate: val }));
+                    }}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 px-4 text-sm text-white focus:border-red-500/50 outline-none transition-colors"
+                  />
+                </div>
+                {(bossFilters.startDate || bossFilters.endDate) && (
+                  <button
+                    onClick={() => {
+                      setBossFilters(prev => ({ ...prev, startDate: '', endDate: '' }));
+                      fetchClanBossRuns(selectedClan.id, bossStatusFilter);
+                    }}
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1.5 rounded text-[10px] font-bold uppercase transition"
+                  >
+                    Ara
+                  </button>
+                )}
               </div>
-              {(bossFilters.itemName || bossFilters.playerName || bossFilters.date) && (
+              {(bossFilters.itemName || bossFilters.playerName || bossFilters.startDate || bossFilters.endDate) && (
                 <button
-                  onClick={() => setBossFilters({ itemName: '', playerName: '', date: '' })}
+                  onClick={() => {
+                    setBossFilters({ itemName: '', playerName: '', startDate: '', endDate: '' });
+                    fetchClanBossRuns(selectedClan.id, bossStatusFilter);
+                  }}
                   className="text-gray-500 hover:text-white text-xs pb-2 underline transition-colors font-bold uppercase tracking-tighter"
                 >
                   Sıfırla
@@ -1929,7 +2368,14 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   >
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h3 className="font-bold text-white group-hover:text-red-400 transition-colors uppercase italic">{run.boss_name}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-white group-hover:text-red-400 transition-colors uppercase italic">{run.boss_name}</h3>
+                          {run.status === 'closed' ? (
+                            <span className="bg-green-900/40 text-green-400 border border-green-800/50 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter shadow-sm">KAPALI</span>
+                          ) : (
+                            <span className="bg-orange-900/40 text-orange-400 border border-orange-800/50 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter shadow-sm">AÇIK</span>
+                          )}
+                        </div>
                         <div className="text-sm text-gray-400 flex items-center gap-1 mt-1">
                           <Calendar size={14} />
                           {new Date(run.run_date).toLocaleDateString('tr-TR')}
@@ -2700,14 +3146,12 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                               <div className="font-medium text-white text-sm">{participant.nickname || participant.username}</div>
                               <div className="text-xs text-purple-400 font-bold">ACP: {dailyAmount.toLocaleString()}</div>
                             </div>
-                            {participant.user_id !== uid && (
-                              <button
-                                onClick={() => setSelectedParticipants(selectedParticipants.filter((_, i) => i !== index))}
-                                className="text-red-500 hover:text-red-400 p-1"
-                              >
-                                <X size={14} />
-                              </button>
-                            )}
+                            <button
+                              onClick={() => setSelectedParticipants(selectedParticipants.filter((_, i) => i !== index))}
+                              className="text-red-500 hover:text-red-400 p-1"
+                            >
+                              <X size={14} />
+                            </button>
                           </div>
                         );
                       })}
@@ -2823,6 +3267,33 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                     )}
                   </div>
                 </div>
+
+                {/* Görsel Ekle (Opsiyonel) */}
+                <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 mt-6">
+                  <div className="flex justify-between items-center mb-3">
+                    <label className="block text-sm font-medium text-gray-400">Görsel (Opsiyonel)</label>
+                    <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded border border-gray-700 font-bold">BBCode, HTML veya URL</span>
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Görsel URL veya kodu (örn: [img]...[/img])"
+                      value={runScreenshotUrl}
+                      onChange={(e) => setRunScreenshotUrl(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-green-500 outline-none transition"
+                    />
+                    {extractImageUrl(runScreenshotUrl) && (
+                      <div className="mt-3 relative" style={{ maxHeight: '150px' }}>
+                        <img
+                          src={extractImageUrl(runScreenshotUrl)}
+                          alt="Görsel Önizleme"
+                          className="max-h-[150px] w-auto mx-auto rounded border border-gray-700 shadow"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Modal Footer */}
@@ -2872,7 +3343,19 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
               {/* Modal Content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {/* Run Info */}
-                <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700">
+                <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 relative">
+                  {selectedRun.screenshot_url && (
+                    <button
+                      onClick={() => {
+                        setImageViewerUrl(selectedRun.screenshot_url);
+                        setShowImageViewerModal(true);
+                      }}
+                      className="absolute top-4 right-4 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-lg z-10"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
+                      Görseli Gör
+                    </button>
+                  )}
                   <h4 className="font-bold text-white mb-3">Run Bilgileri</h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -2925,6 +3408,47 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                     </div>
                   </div>
 
+                  {/* Bulk Payment Buttons */}
+                  {(selectedRun.created_by === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader') && (
+                    <div className="flex gap-2 mb-3">
+                      {(() => {
+                        const total = (selectedRun.total_sold_amount || 0) - (selectedRun.total_treasury_amount || 0);
+                        const count = selectedRun.participants?.length || 1;
+                        const hasUnpaid = selectedRun.participants?.some((p, idx) => {
+                          const baseShare = Math.floor(Math.max(0, total) / count);
+                          const remainder = Math.max(0, total) % count;
+                          const share = idx < remainder ? baseShare + 1 : baseShare;
+                          return (share - parseFloat(p.paid_amount || 0)) > 0;
+                        });
+                        const hasPaid = selectedRun.participants?.some(p => parseFloat(p.paid_amount || 0) > 0);
+
+                        return (
+                          <>
+                            {hasUnpaid && total > 0 && (
+                              <button
+                                onClick={handlePayAllParticipants}
+                                disabled={isSending}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-lg"
+                              >
+                                <Coins size={14} />
+                                Herkese Öde
+                              </button>
+                            )}
+                            {hasPaid && (
+                              <button
+                                onClick={handleReverseAllPayments}
+                                disabled={isSending}
+                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-lg"
+                              >
+                                <X size={14} />
+                                Hepsini İptal Et
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
                   <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
                     {selectedRun.participants
                       ?.filter(p => (p.nickname || p.main_character || p.username || '').toLowerCase().includes(participantSearch.toLowerCase()))
@@ -3135,7 +3659,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                                           const totalAmount = drop.quantity * multiplier;
                                           if (window.confirm(`${drop.item_name} karşılığı olan ${totalAmount.toLocaleString()} G tutarı klan kasasına (Tax) aktarmak istediğinize emin misiniz?`)) {
                                             const success = await handleProcessTreasuryAction('send_to_tax', totalAmount, `Run Tax Aktarımı: ${drop.item_name}`, selectedRun.id, drop.id);
-                                            if (success) window.location.reload();
+                                            if (success) refreshClanMembers();
                                           }
                                         }}
                                         className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[10px] font-bold transition shadow-md whitespace-nowrap"
@@ -3153,7 +3677,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                                           const totalAmount = drop.quantity * multiplier;
                                           if (window.confirm(`${drop.item_name} karşılığı olan ${totalAmount.toLocaleString()} G ile klan borcu ödemek istediğinize emin misiniz?`)) {
                                             const success = await handlePayDebtWithWarning(totalAmount, `Run Borç Ödemesi: ${drop.item_name}`, selectedRun.id, drop.id);
-                                            if (success) window.location.reload();
+                                            if (success) refreshClanMembers();
                                           }
                                         }}
                                         className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-[10px] font-bold transition shadow-md whitespace-nowrap"
@@ -3191,7 +3715,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                           const val = prompt('Tax\'a aktarılacak tutarı girin:', '0');
                           if (val !== null && !isNaN(parseFloat(val)) && parseFloat(val) > 0) {
                             const success = await handleProcessTreasuryAction('send_to_tax', val, `Run Genel Tax Aktarımı: ${selectedRun.boss_name}`, selectedRun.id);
-                            if (success) window.location.reload();
+                            if (success) refreshClanMembers();
                           }
                         }}
                         className="bg-blue-900/40 hover:bg-blue-900/60 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2"
@@ -3203,7 +3727,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                           const val = prompt('Borç ödemesi için kullanılacak tutarı girin:', '0');
                           if (val !== null && !isNaN(parseFloat(val)) && parseFloat(val) > 0) {
                             const success = await handlePayDebtWithWarning(val, `Run Genel Borç Ödemesi: ${selectedRun.boss_name}`, selectedRun.id);
-                            if (success) window.location.reload();
+                            if (success) refreshClanMembers();
                           }
                         }}
                         className="bg-red-900/40 hover:bg-red-900/60 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2"
@@ -3307,7 +3831,19 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                           }}
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="font-bold text-white text-sm truncate">{member.nickname || member.username}</div>
+                            <div className="font-bold text-white text-sm truncate flex items-center gap-2">
+                              {member.nickname || member.username}
+                              {member.characterClass && (
+                                <span title={member.characterClass} className="flex items-center">
+                                  {getClassIcon(member.characterClass)}
+                                </span>
+                              )}
+                              {member.level && (
+                                <span className="text-[10px] font-bold text-gray-400">
+                                  Lv {formatLevelDisplay(member.level, member.awakening)}
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[10px] text-gray-500 uppercase tracking-tighter truncate">{member.main_character || 'Bilinmeyen'}</div>
                           </div>
                           <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected
@@ -3405,6 +3941,136 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   className="flex-1 px-4 py-3 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white rounded-xl font-black transition shadow-xl"
                 >
                   SATIŞI ONAYLA
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Payment Modal */}
+        {showBulkPaymentModal && bulkPaymentTarget && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[130] p-4 backdrop-blur-sm">
+            <div className="bg-gray-800 w-full max-w-2xl rounded-2xl border border-gray-700 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="p-6 border-b border-gray-700 bg-gray-800/80 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <Coins className="text-emerald-500" size={24} />
+                  <div>
+                    <h3 className="text-xl font-bold text-white uppercase italic tracking-tighter">Toplu Ödeme</h3>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{bulkPaymentTarget.nickname || bulkPaymentTarget.username} için alacak dağıtımı</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowBulkPaymentModal(false)} className="text-gray-400 hover:text-white transition">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-1 bg-gray-900/20">
+                {isBulkLoading ? (
+                  <div className="flex flex-col items-center justify-center py-20 gap-4">
+                    <div className="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                    <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Kayıtlar Yükleniyor...</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                      <div className="bg-emerald-900/10 border border-emerald-500/20 rounded-xl p-4 flex flex-col justify-center">
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Seçili Kayıtlardan Toplam</span>
+                        <div className="text-2xl font-black text-emerald-400 font-mono italic">
+                          {bulkPaymentRuns
+                            .filter(r => selectedBulkRuns.has(r.id))
+                            .reduce((acc, curr) => acc + curr.remaining_liquid, 0)
+                            .toLocaleString('tr-TR')} <span className="text-sm">G</span>
+                        </div>
+                      </div>
+                      <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Manuel Tutar Gir (Waterfall)</label>
+                        <input
+                          type="number"
+                          value={customBulkAmount}
+                          onChange={(e) => setCustomBulkAmount(e.target.value)}
+                          placeholder="Boş bırakırsanız seçili tutar ödenir"
+                          className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-white outline-none focus:border-emerald-500 transition text-sm font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center px-2 mb-2">
+                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Ödenebilir Kayıtlar</span>
+                        <button
+                          onClick={() => {
+                            if (selectedBulkRuns.size === bulkPaymentRuns.length) setSelectedBulkRuns(new Set());
+                            else setSelectedBulkRuns(new Set(bulkPaymentRuns.map(r => r.id)));
+                          }}
+                          className="text-[10px] text-blue-400 font-bold hover:underline"
+                        >
+                          {selectedBulkRuns.size === bulkPaymentRuns.length ? 'Hepsini Kaldır' : 'Hepsini Seç'}
+                        </button>
+                      </div>
+
+                      {bulkPaymentRuns.length === 0 ? (
+                        <div className="text-center py-10 bg-gray-900/40 rounded-xl border border-dashed border-gray-700 text-gray-500 italic text-sm">
+                          Ödenebilir likit bakiyesi olan kayıt bulunamadı.
+                        </div>
+                      ) : (
+                        bulkPaymentRuns.map(run => (
+                          <div
+                            key={run.id}
+                            onClick={() => {
+                              const newSelected = new Set(selectedBulkRuns);
+                              if (newSelected.has(run.id)) newSelected.delete(run.id);
+                              else newSelected.add(run.id);
+                              setSelectedBulkRuns(newSelected);
+                            }}
+                            className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${selectedBulkRuns.has(run.id)
+                              ? 'bg-emerald-900/10 border-emerald-500/50'
+                              : 'bg-gray-800/50 border-gray-700 hover:border-gray-600'
+                              }`}
+                          >
+                            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedBulkRuns.has(run.id) ? 'bg-emerald-500 border-emerald-500' : 'bg-gray-900 border-gray-700'
+                              }`}>
+                              {selectedBulkRuns.has(run.id) && <Plus size={14} className="text-white" />}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-start">
+                                <div className="font-bold text-white text-sm">{run.boss_name}</div>
+                                <div className="text-emerald-400 font-black text-sm font-mono">
+                                  {run.remaining_liquid.toLocaleString('tr-TR')} G
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] text-gray-500 font-bold uppercase mt-1">
+                                <span>{new Date(run.run_date).toLocaleDateString('tr-TR')}</span>
+                                <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
+                                <span>Likit Pay: {Math.floor(run.liquid_share || 0).toLocaleString()} G</span>
+                                {run.paid_amount > 0 && (
+                                  <>
+                                    <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
+                                    <span className="text-yellow-600">Kısmi Ödenen: {run.paid_amount.toLocaleString()} G</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="p-6 bg-gray-900/50 border-t border-gray-700 flex gap-4">
+                <button onClick={() => setShowBulkPaymentModal(false)} className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition">İptal</button>
+                <button
+                  onClick={handleBulkPaymentSubmit}
+                  disabled={isSending || selectedBulkRuns.size === 0 || isBulkLoading}
+                  className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-black transition shadow-xl uppercase italic flex items-center justify-center gap-2"
+                >
+                  {isSending ? 'İŞLENİYOR...' : (
+                    <>
+                      <Coins size={20} />
+                      ÖDEMEYİ YAP
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -3524,23 +4190,39 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      {acpDonations.map((donation) => (
-                        <div key={donation.userId} className="flex items-center justify-between bg-gray-900/50 p-3 rounded-lg border border-gray-700/50">
-                          <div className="font-medium text-white">{donation.nickname}</div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              placeholder="Miktar"
-                              value={donation.amount}
-                              onChange={(e) => handleACPChange(donation.userId, e.target.value)}
-                              className="w-32 bg-gray-800 text-white px-3 py-1.5 rounded border border-gray-600 focus:border-purple-500 focus:outline-none text-right"
-                              min="0"
-                            />
-                            <span className="text-xs text-gray-500 font-bold w-8 text-center">ACP</span>
+                    <div className="mb-4 relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                      <input
+                        type="text"
+                        placeholder="Üye ara..."
+                        value={acpDonationSearch}
+                        onChange={(e) => setAcpDonationSearch(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:border-purple-500 outline-none transition"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {acpDonations
+                        .filter(donation =>
+                          (donation.nickname || '').toLowerCase().includes(acpDonationSearch.toLowerCase())
+                        )
+                        .sort((a, b) => (a.nickname || '').localeCompare(b.nickname || ''))
+                        .map((donation) => (
+                          <div key={donation.userId} className="flex items-center justify-between bg-gray-900/50 p-2.5 rounded-lg border border-gray-700/50 hover:bg-gray-800/50 transition-colors">
+                            <div className="font-medium text-white truncate pr-2" title={donation.nickname}>{donation.nickname}</div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <input
+                                type="number"
+                                placeholder="Miktar"
+                                value={donation.amount}
+                                onChange={(e) => handleACPChange(donation.userId, e.target.value)}
+                                className="w-24 bg-gray-800 text-white px-2 py-1.5 rounded border border-gray-600 focus:border-purple-500 focus:outline-none text-right text-sm"
+                                min="0"
+                              />
+                              <span className="text-[10px] text-purple-400 font-bold w-6 text-center">ACP</span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </div>
 
@@ -3629,6 +4311,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                           .filter(item => {
                             // Search filter
                             const matchesSearch =
+                              (item.nickname || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
                               (item.username || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
                               (item.main_character || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
                               (item.creator_name || '').toLowerCase().includes(acpHistorySearch.toLowerCase());
@@ -3670,7 +4353,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                                   {item.amount}
                                 </div>
                                 <div>
-                                  <div className="text-white font-bold">{item.main_character || item.username}</div>
+                                  <div className="text-white font-bold">{item.nickname || item.main_character || item.username}</div>
                                   <div className="text-[10px] text-gray-500 flex items-center gap-2 uppercase tracking-tight">
                                     <span>{new Date(item.donation_date).toLocaleDateString('tr-TR')}</span>
                                     <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
@@ -3690,6 +4373,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
 
                         {acpHistory.filter(item => {
                           const matchesSearch =
+                            (item.nickname || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
                             (item.username || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
                             (item.main_character || '').toLowerCase().includes(acpHistorySearch.toLowerCase()) ||
                             (item.creator_name || '').toLowerCase().includes(acpHistorySearch.toLowerCase());
@@ -4195,8 +4879,32 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
           </div>
         </div>
       )}
+
+      {/* Image Viewer Modal */}
+      {showImageViewerModal && (
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[200] p-4 backdrop-blur-md" onClick={() => setShowImageViewerModal(false)}>
+          <div className="relative max-w-[95vw] max-h-[95vh] flex items-center justify-center">
+            <button
+              className="absolute -top-12 right-0 md:-right-12 text-white/50 hover:text-white transition p-2 bg-black/50 hover:bg-red-500 rounded-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowImageViewerModal(false);
+              }}
+            >
+              <X size={24} />
+            </button>
+            <img
+              src={extractImageUrl(imageViewerUrl) || imageViewerUrl}
+              alt="Run Görseli"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl ring-1 ring-white/10"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
+
     </div >
   );
 };
 
-export default ClanPage; 
+export default ClanPage;

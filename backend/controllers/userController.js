@@ -134,6 +134,41 @@ const updateProfile = async (req, res) => {
       return res.status(400).json({ error: 'Geçersiz profil verileri' });
     }
 
+    // Sınıf, Level ve Awakening Doğrulamaları
+    if (profile.characterClass !== undefined && profile.characterClass !== null && profile.characterClass !== '') {
+      const validClasses = ['Warrior', 'Rogue', 'Mage', 'Priest'];
+      if (!validClasses.includes(profile.characterClass)) {
+        return res.status(400).json({ error: 'Geçersiz karakter sınıfı. Sadece Warrior, Rogue, Mage, Priest olabilir.' });
+      }
+    }
+
+    if (profile.level !== undefined && profile.level !== null && profile.level !== '') {
+      let lvl = parseInt(profile.level, 10);
+      if (isNaN(lvl)) lvl = 1;
+      if (lvl < 1) lvl = 1;
+      if (lvl > 85) lvl = 85;
+      profile.level = lvl;
+    }
+
+    if (profile.awakening !== undefined && profile.awakening !== null && profile.awakening !== '') {
+      let awk = parseInt(profile.awakening, 10);
+      if (isNaN(awk)) awk = 0;
+      if (awk < 0) awk = 0;
+      if (awk > 5) awk = 5;
+
+      // Eğer level 85 değilse, uyanış zorunlu olarak 0 yapılır
+      if (profile.level !== 85) {
+        awk = 0;
+      }
+      profile.awakening = awk;
+    }
+
+    // Eğer level gönderilmemiş ama veritabanında daha önce var mı diye kontrol edemesek de,
+    // frontend genellikle hepsini birlikte gönderir. Sadece body'e güveniyoruz.
+    if (profile.level !== 85 && profile.awakening > 0) {
+      profile.awakening = 0;
+    }
+
     const payload = JSON.stringify(profile);
 
     // 1. Username: Giriş adı

@@ -1,19 +1,19 @@
 const rateLimit = require('express-rate-limit');
 
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // limit each IP to 200 requests per windowMs
+  windowMs: 15 * 60 * 1000, // 15 dakika
+  max: 250, // IP başına 15 dakikada max 250 istek (Optimize edildiği için limit düşürüldü)
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later.' }
+  message: { error: 'Çok fazla istek gönderildi. 15 dakika sonra tekrar deneyin.' }
 });
 
 const strictWriteLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 60, // write endpoints stricter
+  max: 100, // Yazma işlemleri için daha sıkı (Optimize edildiği için limit düşürüldü)
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many write requests, slow down.' }
+  message: { error: 'Çok fazla yazma isteği. 15 dakika sonra tekrar deneyin.' }
 });
 
 module.exports = { generalLimiter, strictWriteLimiter };

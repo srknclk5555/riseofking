@@ -41,6 +41,20 @@ const initialize = (server) => {
         socket.join(socket.userId);
         console.log(`[SocketManager] User "${socket.userId}" joined room "${socket.userId}". Total rooms: ${io.sockets.adapter.rooms.size}`);
 
+        // Klan odasına katılma
+        socket.on('join_clan', (clanId) => {
+            const roomName = `clan:${clanId}`;
+            socket.join(roomName);
+            console.log(`[SocketManager] User "${socket.userId}" joined clan room "${roomName}"`);
+        });
+
+        // Klan odasından ayrılma
+        socket.on('leave_clan', (clanId) => {
+            const roomName = `clan:${clanId}`;
+            socket.leave(roomName);
+            console.log(`[SocketManager] User "${socket.userId}" left clan room "${roomName}"`);
+        });
+
         socket.on('disconnect', () => {
             console.log(`[SocketManager] User disconnected: ${socket.userId} (${socket.id})`);
             connectedUsers.delete(socket.userId);
@@ -74,28 +88,23 @@ const sendToUser = (userId, event, data) => {
         console.error('[SocketManager] IO not initialized, cannot send event:', event);
         return;
     }
-
-    const room = io.sockets.adapter.rooms.get(userId);
-    const roomSize = room ? room.size : 0;
-    const socketIds = room ? Array.from(room) : [];
-
-    console.log(`[SocketManager] ATTEMPTING SEND: "${event}" to Room: "${userId}" | Size: ${roomSize} | Sockets: ${socketIds.join(', ')}`);
-
-    if (roomSize === 0) {
-        console.warn(`[SocketManager] TARGET UNREACHABLE: User "${userId}" is not connected to their room.`);
-        // Aktif tüm odaları ve içindeki socketleri logla (Sadece debug için)
-        const allRooms = {};
-        for (const [rId, rSet] of io.sockets.adapter.rooms) {
-            if (!rId.startsWith('/#')) allRooms[rId] = rSet.size;
-        }
-        console.log('[SocketManager] CURRENT ACTIVE USER ROOMS:', allRooms);
-    }
-
     io.to(userId).emit(event, data);
+};
+
+// Belirli bir klandaki herkese event gönder
+const sendToClan = (clanId, event, data) => {
+    if (!io) {
+        console.error('[SocketManager] IO not initialized, cannot send clan event:', event);
+        return;
+    }
+    const roomName = `clan:${clanId}`;
+    console.log(`[SocketManager] Sending event "${event}" to clan room "${roomName}"`);
+    io.to(roomName).emit(event, data);
 };
 
 module.exports = {
     initialize,
     getIO,
-    sendToUser
+    sendToUser,
+    sendToClan
 };

@@ -1,5 +1,8 @@
 const pool = require('../config/database');
 const NotificationService = require('../services/notificationService');
+const socketManager = require('../socket/socketManager');
+// Dinamik durum güncellemesi için checkAndCloseRun fonksiyonunu içe aktar
+const { checkAndCloseRun } = require('./clanBossController');
 
 // Clan bankasını ve bakiyesini getir
 const getClanBank = async (req, res) => {
@@ -70,6 +73,8 @@ const updateClanDebt = async (req, res) => {
         );
 
         res.status(200).json({ message: 'Klan borç bilgisi güncellendi' });
+        // SOCKET.IO
+        socketManager.sendToClan(clanId, 'CLAN_BANK_UPDATED', { action: 'debt_update' });
     } catch (error) {
         console.error('❌ Borç güncelleme hatası:', error);
         res.status(500).json({ error: 'İşlem başarısız' });
@@ -99,6 +104,8 @@ const updateClanTax = async (req, res) => {
         );
 
         res.status(200).json({ message: 'Klan kasası güncellendi' });
+        // SOCKET.IO
+        socketManager.sendToClan(clanId, 'CLAN_BANK_UPDATED', { action: 'tax_update' });
     } catch (error) {
         console.error('❌ Kasa güncelleme hatası:', error);
         res.status(500).json({ error: 'İşlem başarısız' });
@@ -202,8 +209,17 @@ const processTreasuryAction = async (req, res) => {
             }
         }
 
+        // Durumu kontrol et (async)
+        if (runId) {
+            checkAndCloseRun(runId);
+        }
+
         await client.query('COMMIT');
         res.status(200).json({ message: 'İşlem başarıyla gerçekleşti' });
+
+        // SOCKET.IO
+        socketManager.sendToClan(clanId, 'CLAN_BANK_UPDATED', { action: 'treasury_action' });
+        if (runId) socketManager.sendToClan(clanId, 'CLAN_BOSS_RUN_UPDATED', { runId, action: 'treasury_action' });
 
     } catch (error) {
         await client.query('ROLLBACK');
@@ -313,7 +329,16 @@ const sellItem = async (req, res) => {
             }
         }
 
+        // Durumu kontrol et (async)
+        if (item.run_id) {
+            checkAndCloseRun(item.run_id);
+        }
+
         res.status(200).json({ message: 'Satış başarıyla tamamlandı' });
+
+        // SOCKET.IO
+        socketManager.sendToClan(clanId, 'CLAN_BANK_UPDATED', { action: 'item_sold' });
+        if (item.run_id) socketManager.sendToClan(clanId, 'CLAN_BOSS_RUN_UPDATED', { runId: item.run_id, action: 'item_sold' });
 
     } catch (error) {
         await client.query('ROLLBACK');
@@ -398,12 +423,13 @@ const payParticipant = async (req, res) => {
         );
 
         // 5. (Opsiyonel) clan_boss_participants tablosundaki is_paid durumunu güncelle
-        await client.query(
-            'UPDATE clan_boss_participants SET is_paid = true WHERE run_id = $1 AND user_id = $2',
-            [runId, participantUserId]
-        );
+        // DİNAMİK OLARAK checkAndCloseRun İÇİNDE HESAPLANIYOR ARTIK. BİR ŞEY YAPMAYA GEREK YOK.
+
 
         await client.query('COMMIT');
+
+        // Durumu kontrol et (async)
+        checkAndCloseRun(runId);
 
         // BİLDİRİM: Ödeme yapılan kullanıcıya bildir
         try {
@@ -420,12 +446,202 @@ const payParticipant = async (req, res) => {
 
         res.status(200).json({ message: 'Ödeme başarıyla yapıldı' });
 
+        // SOCKET.IO
+        socketManager.sendToClan(clanId, 'CLAN_BANK_UPDATED', { action: 'payment_made' });
+        socketManager.sendToClan(clanId, 'CLAN_BOSS_RUN_UPDATED', { runId, action: 'payment_made' });
+        socketManager.sendToUser(participantUserId, 'USER_DATA_UPDATED');
+        socketManager.sendToUser(participantUserId, 'NOTIFICATIONS_UPDATED');
+
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('❌ Ödeme hatası:', error);
         res.status(500).json({ error: error.message || 'Ödeme işlemi başarısız' });
     } finally {
         client.release();
+    }
+};
+
+// Katılımcıya Toplu/Kısmi Ödeme Yap (Sadece Klan Sahibi/Lideri)
+const bulkPayParticipant = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { clanId, participantUserId, payments } = req.body;
+        // payments = [{ runId, amount }, ...]
+        const userId = req.user?.uid;
+
+        if (!clanId || !participantUserId || !Array.isArray(payments) || payments.length === 0) {
+            return res.status(400).json({ error: 'Eksik veya hatalı bilgi' });
+        }
+
+        // Toplam miktarı hesapla
+        const totalAmount = payments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+        if (totalAmount <= 0) return res.status(400).json({ error: 'Sıfırdan büyük bir miktar olmalı' });
+
+        // Yetki kontrolü (Sadece leader)
+        const memberCheck = await pool.query(
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            [clanId, userId]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
+            return res.status(403).json({ error: 'Sadece klan lideri ödeme yapabilir' });
+        }
+
+        await client.query('BEGIN');
+
+        // 1. Bakiye kontrolü
+        const balanceResult = await client.query('SELECT balance FROM clan_balances WHERE clan_id = $1', [clanId]);
+        const currentBalance = balanceResult.rows.length > 0 ? balanceResult.rows[0].balance : 0;
+
+        if (currentBalance < totalAmount) {
+            throw new Error(`Klan bakiyesi yetersiz (Zaman aşımına uğramış olabilir). Mevcut: ${currentBalance}`);
+        }
+
+        // 2. clan_balances'dan toplam miktarı düş
+        await client.query(
+            'UPDATE clan_balances SET balance = GREATEST(0, balance - $1), updated_at = CURRENT_TIMESTAMP WHERE clan_id = $2',
+            [totalAmount, clanId]
+        );
+
+        // Alıcı bilgisini getir (Transaction logları için)
+        const infoResult = await client.query(
+            `SELECT 
+                u.username, u.main_character,
+                (SELECT x.nickname FROM users u2, jsonb_to_recordset(CASE WHEN jsonb_typeof(u2.other_players) = 'array' THEN u2.other_players ELSE '[]'::jsonb END) as x(uid text, nickname text) 
+                 WHERE u2.uid = $1 AND x.uid = $2) as receiver_nickname
+             FROM users u
+             WHERE u.uid = $2`,
+            [userId, participantUserId]
+        );
+        const info = infoResult.rows[0];
+        const receiverName = info?.receiver_nickname || info?.main_character || info?.username || 'Bilinmeyen Oyuncu';
+
+        // 3. Her bir run için clan_payments kaydı oluştur
+        for (const payment of payments) {
+            const { runId, amount } = payment;
+            if (parseFloat(amount) > 0) {
+                await client.query(
+                    `INSERT INTO clan_payments (clan_id, run_id, user_id, amount, paid_by, status)
+                     VALUES ($1, $2, $3, $4, $5, 'paid')`,
+                    [clanId, runId, participantUserId, amount, userId]
+                );
+            }
+        }
+
+        // 4. İşlem logu ekle (Tek satır log)
+        const formattedAmount = new Intl.NumberFormat('tr-TR').format(totalAmount);
+        const description = `${receiverName} isimli üyeye ${payments.length} adet farklı kayıt için toplam ${formattedAmount} coin toplu ödeme yapıldı.`;
+
+        await client.query(
+            `INSERT INTO clan_bank_transactions (clan_id, user_id, amount, transaction_type, description)
+             VALUES ($1, $2, $3, 'payment_made', $4)`,
+            [clanId, userId, -totalAmount, description]
+        );
+
+        await client.query('COMMIT');
+
+        // Toplu ödemede her bir run için durum kontrolü yap
+        if (payments && Array.isArray(payments)) {
+            payments.forEach(p => {
+                if (p.runId) checkAndCloseRun(p.runId);
+            });
+        }
+
+        // BİLDİRİM: Ödeme yapılan kullanıcıya bildir
+        try {
+            await NotificationService.create({
+                receiver_id: participantUserId,
+                title: 'Toplu Ödeme Yapıldı',
+                text: `${payments.length} adet boss run için toplam ${formattedAmount} coin ödemeniz yapıldı ve klan bakiyesinden düşüldü.`,
+                related_id: null,
+                type: 'payout_notification'
+            });
+        } catch (notifError) {
+            console.error('Payment notification error:', notifError);
+        }
+
+        res.status(200).json({ message: 'Toplu ödeme başarıyla yapıldı' });
+
+        // SOCKET.IO
+        socketManager.sendToClan(clanId, 'CLAN_BANK_UPDATED', { action: 'bulk_payment' });
+        socketManager.sendToUser(participantUserId, 'USER_DATA_UPDATED');
+        socketManager.sendToUser(participantUserId, 'NOTIFICATIONS_UPDATED');
+        if (payments && Array.isArray(payments)) {
+            payments.forEach(p => {
+                if (p.runId) socketManager.sendToClan(clanId, 'CLAN_BOSS_RUN_UPDATED', { runId: p.runId, action: 'bulk_payment' });
+            });
+        }
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Toplu ödeme hatası:', error);
+        res.status(500).json({ error: error.message || 'Ödeme işlemi başarısız' });
+    } finally {
+        client.release();
+    }
+};
+
+// Üyenin ödenebilir (likit bakiyesi olan) runlarını getir
+const getMemberPayableRuns = async (req, res) => {
+    try {
+        const { clanId, userId } = req.params;
+        const requesterId = req.user?.uid;
+
+        // Yetki kontrolü (Klan lideri mi yoksa kendisi mi?)
+        const memberCheck = await pool.query(
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            [clanId, requesterId]
+        );
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ error: 'Yetki yok' });
+        }
+
+        // Sadece klan lideri başkasının kayıtlarını görebilir, üye sadece kendininkini görebilir
+        if (memberCheck.rows[0].role !== 'leader' && requesterId !== userId) {
+            return res.status(403).json({ error: 'Bu işlem için yetkiniz yok' });
+        }
+
+        // Likit bakiyesi (Bars + Satılan İtemler) olup henüz tamamen ödenmemiş runları getir
+        const runsResult = await pool.query(
+            `SELECT 
+                r.id, 
+                r.boss_name, 
+                r.run_date,
+                (SELECT COALESCE(SUM(sale_amount), 0) FROM clan_bank_sold s WHERE s.run_id::text = r.id::text) as total_sold_amount,
+                (SELECT COALESCE(SUM(ABS(amount)), 0) FROM clan_bank_transactions t WHERE t.related_run_id::text = r.id::text AND t.transaction_type IN ('debt_payment', 'tax_transfer')) as total_treasury_amount,
+                (SELECT COUNT(*) FROM clan_boss_participants p WHERE p.run_id::text = r.id::text AND p.left_at IS NULL) as participant_count,
+                COALESCE(pay.paid_amount, 0) as user_paid_amount
+             FROM clan_boss_runs r
+             JOIN clan_boss_participants p ON r.id = p.run_id
+             LEFT JOIN (
+                 SELECT run_id, SUM(amount) as paid_amount 
+                 FROM clan_payments 
+                 WHERE user_id = $2 
+                 GROUP BY run_id
+             ) pay ON r.id = pay.run_id
+             WHERE r.clan_id = $1 AND p.user_id = $2 AND p.left_at IS NULL
+             ORDER BY r.run_date DESC`,
+            [clanId, userId]
+        );
+
+        // Frontend'in kolayca kullanabileceği şekilde share hesaplaması yapalım
+        const payableRuns = runsResult.rows.map(run => {
+            const totalRevenue = parseFloat(run.total_sold_amount || 0) - parseFloat(run.total_treasury_amount || 0);
+            const participantCount = parseInt(run.participant_count || 1);
+            const liquidShare = Math.floor(Math.max(0, totalRevenue) / participantCount);
+            const paidAmount = parseFloat(run.user_paid_amount || 0);
+            const remaining = Math.max(0, liquidShare - paidAmount);
+
+            return {
+                ...run,
+                remaining_liquid: remaining,
+                liquid_share: liquidShare
+            };
+        }).filter(run => run.remaining_liquid > 0);
+
+        res.status(200).json(payableRuns);
+    } catch (error) {
+        console.error('❌ Ödenebilir run getirme hatası:', error);
+        res.status(500).json({ error: 'Veriler yüklenemedi' });
     }
 };
 
@@ -452,6 +668,9 @@ const addManualItem = async (req, res) => {
         );
 
         res.status(201).json({ message: 'İtem başarıyla eklendi' });
+
+        // SOCKET.IO
+        socketManager.sendToClan(clanId, 'CLAN_BANK_UPDATED', { action: 'manual_item_added' });
     } catch (error) {
         console.error('❌ Manuel item ekleme hatası:', error);
         res.status(500).json({ error: 'İşlem başarısız' });
@@ -528,6 +747,8 @@ module.exports = {
     getClanBank,
     sellItem,
     payParticipant,
+    bulkPayParticipant,
+    getMemberPayableRuns,
     addManualItem,
     getTransactions,
     getSoldItems,

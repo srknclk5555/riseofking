@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
@@ -90,6 +91,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [selectedDate, setSelectedDate] = useState(formatDate(new Date()));
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   // Veri State'leri
   const [userData, setUserData] = useState(null);
@@ -139,11 +141,18 @@ export default function App() {
     }
   }, [tooltipVisible, tooltipPosition]);
 
-  // Eşyaları PostgreSQL'den çek (Küresel)
+  // Eşyaları PostgreSQL'den çek (Küresel) veya LocalStorage'dan al
   useEffect(() => {
     const fetchGlobalItems = async () => {
       try {
-        console.log('[DEBUG] Fetching global items...');
+        const cachedItems = localStorage.getItem('globalItems');
+        if (cachedItems) {
+          console.log('[DEBUG] Loading global items from localStorage...');
+          setGlobalItems(JSON.parse(cachedItems));
+          return;
+        }
+
+        console.log('[DEBUG] Fetching global items from API...');
         const items = await itemService.getAllItems();
         console.log('[DEBUG] Items fetched:', items);
         // Backend'den gelen veriler zaten database sütun adlarında - doğrudan kullan
@@ -188,6 +197,8 @@ export default function App() {
           bpBonusPerKill: item.bpbonusperkill || null,
           createdAt: item.created_at
         }));
+
+        localStorage.setItem('globalItems', JSON.stringify(formattedItems));
         setGlobalItems(formattedItems);
       } catch (error) {
         console.error("İtemler çekilirken hata oluştu:", error);
@@ -299,7 +310,110 @@ export default function App() {
     }
   }, []);
 
-  // --- EFFECT 2: TEMEL KULLANICI VERİSİ VE BİLDİRİMLER ---
+  // --- PHASE 3: REACT QUERY CACHING ---
+
+  // User Profile Query
+  const { data: profileData } = useQuery({
+    queryKey: ['userProfile', user?.uid],
+    queryFn: () => userService.getProfile(user.uid),
+    enabled: !!user?.uid,
+    staleTime: 10 * 60 * 1000, // 10 dakika taze kabul et
+  });
+
+  // Sync profile data to state
+  useEffect(() => {
+    if (profileData) {
+      setUserData(profileData);
+      setPrices(profileData.prices || {});
+      setLoading(false);
+    }
+  }, [profileData]);
+
+  // Notifications Query
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications', user?.uid],
+    queryFn: () => notificationService.getUserNotifications(user.uid, { limit: 50 }),
+    enabled: !!user?.uid,
+    staleTime: 1 * 60 * 1000, // 1 dakika taze kabul et
+  });
+
+  // Sync notifications to state
+  useEffect(() => {
+    if (notifData) {
+      const formattedNotifications = notifData.map(notif => ({
+        id: notif.id,
+        receiverId: notif.receiver_id,
+        title: notif.title,
+        text: notif.text,
+        relatedId: notif.related_id,
+        read: notif.read,
+        type: notif.type,
+        priority: notif.priority,
+        createdAt: notif.created_at,
+        updatedAt: notif.updated_at
+      }));
+      setNotifications(formattedNotifications);
+    }
+  }, [notifData]);
+
+  // Farm Data Query
+  const { data: farmData } = useQuery({
+    queryKey: ['farms', user?.uid],
+    queryFn: () => farmService.getUserFarms(user.uid),
+    enabled: !!user?.uid && activeTab === 'Farm',
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Sync farm data to state
+  useEffect(() => {
+    if (farmData) {
+      const formattedFarms = farmData.map(farm => ({
+        id: farm.id,
+        farmNumber: farm.farm_number,
+        ownerId: farm.owner_id,
+        date: farm.date,
+        duration: farm.duration,
+        location: farm.location,
+        mob: farm.mob,
+        participants: Array.isArray(farm.participants) ? farm.participants : [],
+        items: Array.isArray(farm.items) ? farm.items : [],
+        totalRevenue: farm.total_revenue,
+        sharePerPerson: farm.share_per_person,
+        type: farm.type,
+        status: farm.status,
+        createdAt: farm.created_at,
+        updatedAt: farm.updated_at
+      }));
+      setFarms(formattedFarms.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)));
+    }
+  }, [farmData]);
+
+  // Messages Query
+  const { data: messageData } = useQuery({
+    queryKey: ['messages', user?.uid],
+    queryFn: () => messageService.getAllMessages(user.uid),
+    enabled: !!user?.uid && activeTab === 'Messaging',
+    staleTime: 30 * 1000,
+  });
+
+  // Sync messages to state
+  useEffect(() => {
+    if (messageData) {
+      const formattedMessages = messageData.map(msg => ({
+        id: msg.id,
+        senderId: msg.sender_id,
+        receiverId: msg.receiver_id,
+        text: msg.text,
+        createdAt: new Date(msg.created_at),
+        read: msg.read,
+        participants: msg.participants
+      }));
+      setPrivateMessages(formattedMessages.sort((a, b) => b.createdAt - a.createdAt));
+    }
+  }, [messageData]);
+
+  // --- EFFECT 2 (DEPRECATED): Manual fetching removed in favor of React Query ---
+  /*
   useEffect(() => {
     if (!user || !user.uid) return;
     setLoading(true);
@@ -307,96 +421,21 @@ export default function App() {
 
     console.log('[DEBUG] Setting up user data for UID:', uid);
 
-    // User data handled by PostgreSQL API
-    const fetchUserData = async () => {
-      try {
-        const userData = await userService.getProfile(uid);
-        setUserData(userData);
-        setPrices(userData.prices || {});
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-        setLoading(false);
-      }
-    };
+    const fetchUserData = async () => { ... };
+    const fetchNotifications = async () => { ... };
 
     fetchUserData();
-
-    // PostgreSQL'den kullanıcı bildirimlerini çek
-    const fetchNotifications = async () => {
-      try {
-        const userNotifications = await notificationService.getUserNotifications(uid, { limit: 50 });
-        // PostgreSQL veri yapısını frontend formatına dönüştür
-        const formattedNotifications = userNotifications.map(notif => ({
-          id: notif.id,
-          receiverId: notif.receiver_id,
-          title: notif.title,
-          text: notif.text,
-          relatedId: notif.related_id,
-          read: notif.read,
-          type: notif.type,
-          priority: notif.priority,
-          createdAt: notif.created_at,
-          updatedAt: notif.updated_at
-        }));
-        setNotifications(formattedNotifications);
-      } catch (error) {
-        console.error('Bildirimler çekilirken hata oluştu:', error);
-      }
-    };
-
     fetchNotifications();
-
-    // Cleanup function
-    return () => {
-      // unsubUser(); // Removed
-    };
   }, [user]);
+  */
 
-  // --- EFFECT 3: FARM VERİSİ (sadece Farm sekmesi aktifse) ---
-  useEffect(() => {
-    if (activeTab !== 'Farm' || !user || !user.uid) return;
-    const uid = user.uid;
-
-    // PostgreSQL'den kullanıcıya ait farm'ları çek
-    const fetchFarms = async () => {
-      try {
-        const userFarms = await farmService.getUserFarms(uid);
-        // PostgreSQL veri yapısını frontend formatına dönüştür
-        const formattedFarms = userFarms.map(farm => ({
-          id: farm.id,
-          farmNumber: farm.farm_number,
-          ownerId: farm.owner_id,
-          date: farm.date,
-          duration: farm.duration,
-          location: farm.location,
-          mob: farm.mob,
-          participants: Array.isArray(farm.participants) ? farm.participants : [],
-          items: Array.isArray(farm.items) ? farm.items : [],
-          totalRevenue: farm.total_revenue,
-          sharePerPerson: farm.share_per_person,
-          type: farm.type,
-          status: farm.status,
-          createdAt: farm.created_at,
-          updatedAt: farm.updated_at
-        }));
-        setFarms(formattedFarms.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)));
-      } catch (error) {
-        console.error('Farm verileri çekilirken hata oluştu:', error);
-      }
-    };
-
-    fetchFarms();
-  }, [user, activeTab]);
-
-  // Mesajları yenileme fonksiyonu
+  // Mesajları yenileme fonksiyonu (React Query ile entegre edilecek veya manuel kalabilir)
   const refreshMessages = async () => {
     if (!user || !user.uid) return;
     const uid = user.uid;
 
     try {
       const userMessages = await messageService.getAllMessages(uid);
-      // PostgreSQL veri yapısını frontend formatına dönüştür
       const formattedMessages = userMessages.map(msg => ({
         id: msg.id,
         senderId: msg.sender_id,
@@ -509,11 +548,24 @@ export default function App() {
     socketService.on('message_read_update', handleMessageRead);
     socketService.on('notification_received', handleNewNotification);
 
+    // React Query İnvalidation Sinyalleri
+    socketService.on('USER_DATA_UPDATED', () => {
+      console.log('[Socket] USER_DATA_UPDATED received');
+      queryClient.invalidateQueries({ queryKey: ['userProfile'] });
+    });
+
+    socketService.on('NOTIFICATIONS_UPDATED', () => {
+      console.log('[Socket] NOTIFICATIONS_UPDATED received');
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    });
+
     return () => {
       socketService.off('new_message');
       socketService.off('message_sent');
       socketService.off('message_read_update');
       socketService.off('notification_received');
+      socketService.off('USER_DATA_UPDATED');
+      socketService.off('NOTIFICATIONS_UPDATED');
     };
   }, [user, activeTab]);
 

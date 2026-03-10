@@ -46,6 +46,19 @@ const clanBankService = {
         return response.json();
     },
 
+    bulkPayParticipant: async (paymentData) => {
+        const response = await fetch(`${API_BASE}/clan-bank/bulk-pay`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(paymentData)
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Toplu ödeme işlemi başarısız');
+        }
+        return response.json();
+    },
+
     addManualItem: async (itemData) => {
         const response = await fetch(`${API_BASE}/clan-bank/manual-item`, {
             method: 'POST',
@@ -77,6 +90,17 @@ const clanBankService = {
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.error || 'Satılan itemler yüklenemedi');
+        }
+        return response.json();
+    },
+
+    getMemberPayableRuns: async (clanId, userId) => {
+        const response = await fetch(`${API_BASE}/clan-bank/${clanId}/members/${userId}/payable-runs`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Ödenebilir kayıtlar yüklenemedi');
         }
         return response.json();
     },

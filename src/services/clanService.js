@@ -250,9 +250,17 @@ export const clanService = {
   },
 
   // Klan boss runlarini getir
-  getClanBossRuns: async (clanId) => {
+  getClanBossRuns: async (clanId, status, startDate, endDate) => {
     try {
-      const response = await fetch(`${API_BASE}/clan-boss/runs/clan/${clanId}`, {
+      let url = `${API_BASE}/clan-boss/runs/clan/${clanId}?`;
+      const params = new URLSearchParams();
+      if (status) params.append('status', status);
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+
+      url += params.toString();
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -313,7 +321,8 @@ export const clanService = {
           clanId,
           runDate: runData.date,
           participants: runData.participants,
-          drops: runData.drops
+          drops: runData.drops,
+          screenshotUrl: runData.screenshotUrl
         }),
       });
       if (!response.ok) {
@@ -342,6 +351,25 @@ export const clanService = {
       return await response.json();
     } catch (error) {
       console.error('Odeme durumu guncelleme hatasi:', error);
+      throw error;
+    }
+  },
+
+  // Tüm katılımcıların ödeme durumunu toplu güncelle
+  bulkUpdateAllPaymentStatus: async (runId, isPaid) => {
+    try {
+      const response = await fetch(`${API_BASE}/clan-boss/runs/${runId}/participants/bulk-pay`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ isPaid }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Toplu odeme durumu guncelleme hatasi:', error);
       throw error;
     }
   },
