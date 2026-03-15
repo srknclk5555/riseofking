@@ -128,7 +128,33 @@ export const eventService = {
   updateLog: (id, data) => request(`/events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteLog: (id) => request(`/events/${id}`, { method: 'DELETE' }),
   getDuration: (userId, date, type) => request(`/events/user/${userId}/date/${date}/event/${type}/duration`),
-  updateDuration: (userId, date, type, duration) => request(`/events/user/${userId}/date/${date}/event/${type}/duration`, { method: 'PUT', body: JSON.stringify({ duration }) })
+  updateDuration: (userId, date, type, duration) =>
+    request(`/events/user/${userId}/date/${date}/event/${type}/duration`, {
+      method: 'PUT',
+      body: JSON.stringify({ duration })
+    }),
+  getSchedule: (userId, date) => request(`/events/user/${userId}/schedule/${date}`),
+  upsertResult: (userId, data) =>
+    request(`/events/user/${userId}/result`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  getStats: (userId, params) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/events/user/${userId}/stats${qs ? '?' + qs : ''}`);
+  },
+  getReportSummary: (userId, params) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/events/user/${userId}/report/summary${qs ? '?' + qs : ''}`);
+  },
+  getProfitTimeSeries: (userId, params) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/events/user/${userId}/report/timeseries/profit${qs ? '?' + qs : ''}`);
+  },
+  getDailyBreakdown: (userId, params) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/events/user/${userId}/report/breakdown/daily${qs ? '?' + qs : ''}`);
+  }
 };
 
 // --- NOTIFICATIONS SERVİSİ ---

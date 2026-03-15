@@ -396,20 +396,111 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
   const [newItemPrice, setNewItemPrice] = useState('');
   const [mobOptions, setMobOptions] = useState([]);
   const [locationOptions, setLocationOptions] = useState([]);
+
+  // Konum bazlı mob haritalaması
+  const locationMobs = {
+    'Death Valley': ['Archdemon', 'Bael', 'Deathlord'],
+    'Seven Fold': ['Oakenna', 'Slythera', 'Nysira', 'Nightwatcher', 'Aqualon', 'Kalemor', 'Lightwarden'],
+    'Haddar': ['Archdemon', 'Bael'],
+    'Haggard': ['Archdemon', 'Bael'],
+    'Haddar/Haggard': ['Archdemon', 'Bael']
+  };
+
+  // Filtrelenmiş mob listesi
+  const filteredMobOptions = useMemo(() => {
+    const mapping = locationMobs[location];
+    if (mapping) {
+      return mobOptions.filter(m => mapping.includes(m));
+    }
+    return mobOptions;
+  }, [location, mobOptions]);
+
+  // Konum değiştiğinde mob seçimini kontrol et/sıfırla
+  useEffect(() => {
+    if (location && locationMobs[location]) {
+      const mapping = locationMobs[location];
+      if (mob && !mapping.includes(mob)) {
+        setMob('');
+      }
+    }
+  }, [location]);
   
   // Item autocomplete için state'ler
   const [itemSearchTerm, setItemSearchTerm] = useState('');
   const [availableItems, setAvailableItems] = useState([]);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const itemDropdownRef = useRef(null);
+
+  // İtem ikonu yolunu belirleme fonksiyonu
+  const getItemIcon = (itemName) => {
+    if (!itemName) return null;
+    try {
+      const baseName = itemName.split(' (+')[0].split(' +')[0].trim();
+      let fileName = baseName;
+      let extension = 'png';
+
+      // Özel durumlar: Golden Bar ve Silver Bar
+      if (baseName === "Golden Bar") return '/ui_icons/Gold_Bar.JPG';
+      if (baseName === "Silver Bar") return '/ui_icons/Silver_Bar.JPG';
+
+      // Soulstone kontrolü
+      if (baseName.startsWith("Soulstone of")) {
+        extension = "PNG";
+      }
+      // Rune kontrolü
+      else if (baseName === "Unique Rune") {
+        fileName = "Uniqu_Rune"; // Dosyadaki typo
+        extension = "jfif";
+      }
+      else if (baseName === "Epic Rune") {
+        extension = "jfif";
+      }
+
+      const snakeName = fileName.replace(/ /g, '_');
+      return `/ui_icons/Icon_Item_${snakeName}.${extension}`;
+    } catch (err) {
+      return null;
+    }
+  };
   
   // Filtrelenmiş item listesi
   const filteredItems = useMemo(() => {
-    if (!itemSearchTerm) return availableItems.slice(0, 10); // İlk 10 item
-    return availableItems
+    let items = availableItems;
+
+    // Seven Fold için ÇOK ÖZEL ve KISITLAYICI filtreleme
+    if (location === 'Seven Fold') {
+      const allowedSoulstones = [
+        'Soulstone of Aqualon',
+        'Soulstone of Kalemor',
+        'Soulstone of Lightwarden',
+        'Soulstone of Nightwatcher',
+        'Soulstone of Nysira',
+        'Soulstone of Oakenna',
+        'Soulstone of Slythera'
+      ];
+      const allowedSoulstonesLower = allowedSoulstones.map(s => s.toLowerCase());
+
+      items = items.filter(itemName => {
+        const lowerName = itemName.toLowerCase();
+        // SADECE izin verilen Soulstone'lar listelenebilir, başka hiçbir item görünmez
+        return allowedSoulstonesLower.some(allowed => lowerName.includes(allowed));
+      });
+    } else {
+      // DİĞER KONUMLAR İÇİN: Sadece (+0) itemler ve seviyesi olmayanlar görünür
+      items = items.filter(itemName => {
+        // Eğer isminde (+#) formatında bir seviye varsa, sadece (+0) olanlara izin ver
+        if (itemName.includes('(+')) {
+          return itemName.includes('(+0)');
+        }
+        return true;
+      });
+    }
+
+    if (!itemSearchTerm) return items.slice(0, 10); // İlk 10 item
+    return items
       .filter(item => item.toLowerCase().includes(itemSearchTerm.toLowerCase()))
       .slice(0, 10); // İlk 10 eşleşen item
-  }, [itemSearchTerm, availableItems]);
+  }, [itemSearchTerm, availableItems, location]);
   
   const handleItemSearchChange = (e) => {
     const value = e.target.value;
@@ -606,16 +697,16 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
   };
   
   const handleAddItem = () => {
-    if (!newItemName.trim() || !newItemQuantity || !newItemPrice) {
-      showNotification('Lütfen tüm alanları doldurun.', 'error');
+    if (!newItemName.trim() || !newItemQuantity) {
+      showNotification('Lütfen item adı ve adet miktarını doldurun.', 'error');
       return;
     }
     
     const newItem = {
       name: newItemName.trim(),
       count: parseInt(newItemQuantity) || 0,
-      estimatedPricePerItem: parseFloat(newItemPrice) || 0, // Tahmini fiyat (item başına)
-      soldPricePerItem: parseFloat(newItemPrice) || 0, // Gerçek satış fiyatı (item başına)
+      estimatedPricePerItem: 0, 
+      soldPricePerItem: 0, 
       soldCount: 0
     };
     
@@ -626,8 +717,8 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
     setNewItemPrice('');
     setShowItemDropdown(false);
     
-    // Tahmini toplam geliri güncelle (tüm itemler için)
-    const newTotal = items.reduce((sum, item) => sum + (item.estimatedPricePerItem * item.count), 0) + (newItem.estimatedPricePerItem * newItem.count);
+    // Toplam geliri güncelle (sadece SATILAN itemlerin gerçek fiyatlarıyla)
+    const newTotal = items.reduce((sum, item) => sum + ((item.soldPricePerItem || 0) * (item.soldCount || 0)), 0);
     setTotalRevenue(newTotal);
     setSharePerPerson(participants.length > 0 ? newTotal / participants.length : 0);
     
@@ -819,7 +910,7 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
                 disabled={!isAdmin}
               >
                 <option value="">Seçiniz</option>
-                {mobOptions.map(m => (
+                {filteredMobOptions.map(m => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
@@ -1057,9 +1148,15 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
                       {filteredItems.map((item, idx) => (
                         <div 
                           key={idx}
-                          className="p-2 hover:bg-gray-700 cursor-pointer text-xs text-white border-b border-gray-700 last:border-b-0"
+                          className="p-2 hover:bg-gray-700 cursor-pointer text-xs text-white border-b border-gray-700 last:border-b-0 flex items-center gap-2"
                           onClick={() => isAdmin && handleItemSelect(item)}
                         >
+                          <img 
+                            src={getItemIcon(item)} 
+                            alt="" 
+                            className="w-5 h-5 object-contain" 
+                            onError={(e) => { e.target.style.display = 'none'; }} 
+                          />
                           {item}
                         </div>
                       ))}
@@ -1074,14 +1171,7 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
                   className={`col-span-2 bg-gray-700 border border-gray-600 rounded p-1 text-white text-xs text-center ${!isAdmin ? 'cursor-not-allowed' : ''}`}
                   readOnly={!isAdmin}
                 />
-                <input 
-                  type="number" 
-                  placeholder="Fiyat" 
-                  value={newItemPrice} 
-                  onChange={(e) => isAdmin && setNewItemPrice(e.target.value)}
-                  className={`col-span-3 bg-gray-700 border border-gray-600 rounded p-1 text-white text-xs text-center ${!isAdmin ? 'cursor-not-allowed' : ''}`}
-                  readOnly={!isAdmin}
-                />
+                <div className="col-span-3"></div>
                 <button 
                   onClick={handleAddItem}
                   className={`col-span-2 px-2 rounded text-white text-xs ${isAdmin ? 'bg-green-600' : 'bg-gray-600 cursor-not-allowed'}`}
@@ -1093,12 +1183,11 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
               
               <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 custom-scrollbar pr-1">
                 <div className="grid grid-cols-12 gap-1 text-[10px] text-gray-400 px-2 mb-1 font-bold">
-                  <span className="col-span-3">İtem</span>
+                  <span className="col-span-4">İtem</span>
                   <span className="col-span-1 text-center">Adet</span>
-                  <span className="col-span-1 text-center">Satılan</span>
-                  <span className="col-span-2 text-center">Tahmini Fiyat</span>
-                  <span className="col-span-2 text-center">Gerçek Fiyat</span>
-                  <span className="col-span-2 text-right">Gelir</span>
+                  <span className="col-span-2 text-center">Satılan</span>
+                  <span className="col-span-2 text-center">Birim Fiyat</span>
+                  <span className="col-span-2 text-right">Gelir (c)</span>
                   <span className="col-span-1"></span>
                 </div>
                 
@@ -1109,17 +1198,21 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
                   </div>
                 ) : (
                   items.map((item, idx) => {
-                    // Tahmini gelir: toplam adet * item başına tahmini fiyat
-                    const estimatedIncome = (parseFloat(item.estimatedPricePerItem || 0) * (parseInt(item.count) || 0));
-                    // Gerçek gelir: satılan adet * item başına gerçek fiyat
                     const soldIncome = (parseFloat(item.soldPricePerItem || 0) * (parseInt(item.soldCount) || 0));
                     const remainingCount = (parseInt(item.count) || 0) - (parseInt(item.soldCount) || 0);
-                    const sharePerPersonForItem = participants.length > 0 ? (soldIncome / participants.length) : 0;
                     return (
-                      <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-gray-700 p-2 rounded border border-gray-600 text-xs">
-                        <div className="col-span-3 truncate text-white font-bold" title={item.name}>{item.name}</div>
+                      <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-gray-700 p-2 rounded border border-gray-600 text-xs text-white">
+                        <div className="col-span-4 truncate font-bold flex items-center gap-2" title={item.name}>
+                          <img 
+                            src={getItemIcon(item.name)} 
+                            alt="" 
+                            className="w-5 h-5 object-contain" 
+                            onError={(e) => { e.target.style.display = 'none'; }} 
+                          />
+                          <span className="truncate">{item.name}</span>
+                        </div>
                         <div className="col-span-1 text-center text-gray-300">{item.count}</div>
-                        <div className="col-span-1">
+                        <div className="col-span-2">
                           <input
                             type="number"
                             min="0"
@@ -1130,7 +1223,6 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
                             readOnly={!isAdmin}
                           />
                         </div>
-                        <div className="col-span-2 text-center text-blue-400 font-bold">{item.estimatedPricePerItem || 0}</div>
                         <div className="col-span-2">
                           <input
                             type="number"
@@ -1160,36 +1252,12 @@ const FarmCreateModal = ({ isOpen, onClose, userData, uid, editData, showNotific
                   })
                 )}
                 
-                {/* Tahmini vs Gerçek gelir karşılaştırması */}
                 {items.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
                     <div className="grid grid-cols-12 gap-1 items-center bg-gray-900 p-2 rounded border border-gray-700 text-sm">
-                      <div className="col-span-3 text-white font-bold">Tahmini Toplam</div>
-                      <div className="col-span-7"></div>
-                      <div className="col-span-2 text-right text-blue-400 font-bold">
-                        {items.reduce((sum, item) => sum + (item.estimatedPricePerItem * item.count), 0).toLocaleString()} c
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-12 gap-1 items-center bg-gray-900 p-2 rounded border border-gray-700 text-sm">
-                      <div className="col-span-3 text-white font-bold">Gerçek Toplam</div>
-                      <div className="col-span-7"></div>
-                      <div className="col-span-2 text-right text-green-400 font-bold">
+                      <div className="col-span-6 text-white font-bold text-center uppercase tracking-wider">Toplam Gerçek Gelir</div>
+                      <div className="col-span-6 text-right text-green-400 font-bold pr-4">
                         {totalRevenue.toLocaleString()} c
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-12 gap-1 items-center bg-gray-900 p-2 rounded border border-gray-700 text-sm">
-                      <div className="col-span-3 text-white font-bold">Fark</div>
-                      <div className="col-span-7"></div>
-                      <div className="col-span-2 text-right font-bold">
-                        {(() => {
-                          const estimated = items.reduce((sum, item) => sum + (item.estimatedPricePerItem * item.count), 0);
-                          const difference = totalRevenue - estimated;
-                          return (
-                            <span className={difference >= 0 ? 'text-green-400' : 'text-red-400'}>
-                              {difference >= 0 ? '+' : ''}{difference.toLocaleString()} c
-                            </span>
-                          );
-                        })()}
                       </div>
                     </div>
                   </div>

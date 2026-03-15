@@ -53,10 +53,24 @@ const createClanBossRun = async (req, res) => {
                 [runId, userId, creatorMainChar]
             );
 
+            // Bar item ID'leri skorlama için gerekli; droplar işlenmeden önce çek
+            const silverBarResult = await client.query(`
+                SELECT id, name FROM items 
+                WHERE LOWER(TRIM(name)) IN ('silver bar', 'silverbar', 'silver_bar')
+                LIMIT 1
+            `);
+            const goldBarResult = await client.query(`
+                SELECT id, name FROM items 
+                WHERE LOWER(TRIM(name)) IN ('gold bar', 'golden bar', 'goldbar', 'goldenbar', 'gold_bar', 'golden_bar', 'gold bar (+0)', 'golden bar (+0)')
+                LIMIT 1
+            `);
+
             // SKORALAMA HAZIRLIĞI: Puan miktarını belirle
+            // Basitçe drop listesi boş değilse puanı 12 yapıyoruz (ya da bar dışı kontrolü ekliyoruz)
             const hasRealDrops = drops && drops.some(d => {
-                const dName = d.itemName ? d.itemName.toLowerCase() : '';
-                return dName && !dName.includes('silver bar') && !dName.includes('gold bar') && !dName.includes('golden bar');
+                const silverId = silverBarResult.rows[0]?.id;
+                const goldId = goldBarResult.rows[0]?.id;
+                return d.itemId && d.itemId !== silverId && d.itemId !== goldId;
             });
             const pointsEarned = hasRealDrops ? 12 : 10;
 
@@ -143,19 +157,7 @@ const createClanBossRun = async (req, res) => {
             // 4. BARLAR - %100 OTOMATİK EKLEME VE SATMA (GARANTILI)
             console.log('💰 [BOSS RUN] Auto-adding and selling bars...');
 
-            // Try multiple name variations (Gold Bar, Golden Bar, etc.)
-            const silverBarResult = await client.query(`
-                SELECT id, name FROM items 
-                WHERE LOWER(TRIM(name)) IN ('silver bar', 'silverbar', 'silver_bar')
-                LIMIT 1
-            `);
-
-            const goldBarResult = await client.query(`
-                SELECT id, name FROM items 
-                WHERE LOWER(TRIM(name)) IN ('gold bar', 'golden bar', 'goldbar', 'goldenbar', 'gold_bar', 'golden_bar')
-                LIMIT 1
-            `);
-
+            // silverBarResult / goldBarResult yukarıda skorlama için zaten çekildi
             const autoBars = [
                 { name: 'Silver Bar', item: silverBarResult.rows[0], amount: 10000000, quantity: 1 },
                 { name: 'Gold Bar', item: goldBarResult.rows[0], amount: 100000000, quantity: 1 }
@@ -615,22 +617,32 @@ const getClanBossRuns = async (req, res) => {
         }
 
         const runsResult = await pool.query(query, queryParams);
+        const runs = runsResult.rows;
 
-        // Katılımcıları her run için ayrı ayrı ekleyelim (Karmaşık SQL hatasını önlemek için)
-        const runs = [];
-        for (const run of runsResult.rows) {
+        if (runs.length > 0) {
+            // Katılımcıları toplu olarak getirelim (N+1 problemini çözmek için)
+            const runIds = runs.map(r => r.id);
             const participantsRes = await pool.query(`
-                SELECT p.user_id, u.username, p.main_character,
-                       (SELECT COALESCE(SUM(amount), 0) FROM clan_payments cp WHERE cp.run_id::text = $1 AND cp.user_id = p.user_id) as paid_amount
+                SELECT p.run_id, p.user_id, u.username, p.main_character,
+                       COALESCE(SUM(cp.amount), 0) as paid_amount
                 FROM clan_boss_participants p
                 JOIN users u ON p.user_id = u.uid
-                WHERE p.run_id::text = $1 AND p.left_at IS NULL
+                LEFT JOIN clan_payments cp ON cp.run_id::text = p.run_id::text AND cp.user_id = p.user_id
+                WHERE p.run_id = ANY($1) AND p.left_at IS NULL
+                GROUP BY p.run_id, p.user_id, u.username, p.main_character
                 ORDER BY u.username ASC
-            `, [run.id]);
+            `, [runIds]);
 
-            runs.push({
-                ...run,
-                participants: participantsRes.rows
+            // Katılımcıları run_id'ye göre gruplayalım
+            const participantsByRun = {};
+            participantsRes.rows.forEach(p => {
+                if (!participantsByRun[p.run_id]) participantsByRun[p.run_id] = [];
+                participantsByRun[p.run_id].push(p);
+            });
+
+            // Her bir run'a kendi katılımcılarını ekleyelim
+            runs.forEach(run => {
+                run.participants = participantsByRun[run.id] || [];
             });
         }
 

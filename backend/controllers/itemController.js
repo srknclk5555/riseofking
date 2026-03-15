@@ -11,7 +11,10 @@ const ALLOWED_COLUMNS = [
   'holyresistance', 'darkresistance',
   'daggerdefense', 'sworddefense', 'macedefense', 'axedefense', 'speardefense', 'bowdefense',
   'expbonuspercent', 'coinbonuspercent', 'allmonsterattackbonuspercent',
-  'firedamage', 'icedamage', 'lightningdamage', 'bpperkillbonus'
+  'firedamage', 'icedamage', 'lightningdamage', 'bpperkillbonus',
+  // Yeni Silah/Zırh Sütunları
+  'attack_power', 'physical_defense', 'weight', 'durability', 
+  'required_level', 'required_str', 'required_hp'
 ];
 
 // İngilizce/Türkçe alan adlarını database sütunlarına çevir
@@ -45,6 +48,14 @@ function normalizeItemBody(body) {
   if (out.health_bonus !== undefined && out.healthbonus === undefined) out.healthbonus = out.health_bonus;
   if (out.hp_bonusu !== undefined && out.hpbonus === undefined) out.hpbonus = out.hp_bonusu;
   if (out.mp_bonusu !== undefined && out.mpbonus === undefined) out.mpbonus = out.mp_bonusu;
+
+  // New Weapon/Armor Mappings
+  if (out.agirlik !== undefined && out.weight === undefined) out.weight = out.agirlik;
+  if (out.dayaniklilik !== undefined && out.durability === undefined) out.durability = out.dayaniklilik;
+  if (out.gerekli_seviye !== undefined && out.required_level === undefined) out.required_level = out.gerekli_seviye;
+  if (out.gerekli_strength !== undefined && out.required_str === undefined) out.required_str = out.gerekli_strength;
+  if (out.gerekli_health !== undefined && out.required_hp === undefined) out.required_hp = out.gerekli_health;
+  if (out.fiziksel_savunma !== undefined && out.physical_defense === undefined) out.physical_defense = out.fiziksel_savunma;
 
   // Resistances
   if (out.ates_hasari_direnci !== undefined && out.fireresistance === undefined) out.fireresistance = out.ates_hasari_direnci;

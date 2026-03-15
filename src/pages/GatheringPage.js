@@ -171,6 +171,44 @@ const GatheringPage = ({ userData, selectedDate, prices, uid }) => {
     return savedData.reduce((sum, item) => sum + item.amount, 0);
   }, [savedData]);
 
+  // İtem ikonu yolunu belirleme fonksiyonu
+  const getItemIcon = (profession, itemName) => {
+    if (!profession || !itemName) return null;
+
+    // Soulstone kontrolü
+    if (itemName.startsWith("Soulstone of")) {
+      return encodeURI(`/ui_icons/Icon_Item_${itemName.replace(/\s+/g, '_')}.PNG`);
+    }
+    
+    let folder = profession;
+    let fileName = itemName;
+
+    // Klasör adı düzeltmeleri
+    if (profession === "Woodcutting") folder = "woodcutting";
+    if (profession === "Mining") folder = "mining";
+
+    // Woodcutting özel durumu - klasörde Icon_Item_ öneki yok
+    if (profession === "Woodcutting") {
+      folder = "woodcutting";
+      fileName = itemName.replace(/\s+/g, '').toLowerCase();
+    } else {
+      // Diğer meslekler için Icon_Item_ öneki ve boşluk -> alt çizgi
+      if (profession === "Mining") folder = "mining";
+
+      let adjustedItemName = itemName;
+      if (profession === "Archaeology" && itemName === "Crude Amethsis") adjustedItemName = "Crude Amethyst";
+      if (profession === "Harvesting") {
+        if (itemName === "Cotton") adjustedItemName = "Cotton Fiber";
+        if (itemName === "Zucchine") adjustedItemName = "Zucchini";
+      }
+
+      fileName = `Icon_Item_${adjustedItemName.replace(/\s+/g, '_')}`;
+    }
+
+    const path = `/ui_icons/materials/${folder}/${fileName.trim()}.png`;
+    return encodeURI(path);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex gap-2 border-b border-gray-700 overflow-x-auto pb-2">
@@ -206,7 +244,15 @@ const GatheringPage = ({ userData, selectedDate, prices, uid }) => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
   {(PROFESSIONS[activeTab] && Array.isArray(PROFESSIONS[activeTab]) ? PROFESSIONS[activeTab] : []).map(item => (
             <div key={item} className="bg-gray-700 p-4 rounded-lg flex flex-col gap-2">
-              <span className="text-white font-medium">{item}</span>
+              <div className="flex items-center gap-3">
+                <img 
+                  src={getItemIcon(activeTab, item)} 
+                  alt={item} 
+                  className="w-8 h-8 object-contain rounded bg-gray-900 p-1"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+                <span className="text-white font-medium">{item}</span>
+              </div>
               <div className="flex gap-2">
                 <input type="number" placeholder="Adet" className="w-full bg-gray-900 rounded p-1 text-white" value={currentInputs[item]?.count || 0} onChange={e => setCurrentInputs({ ...currentInputs, [item]: { ...currentInputs[item], count: e.target.value } })} />
                 <input type="number" placeholder="Fiyat" className="w-full bg-gray-900 rounded p-1 text-white" value={currentInputs[item]?.price || 0} onChange={e => setCurrentInputs({ ...currentInputs, [item]: { ...currentInputs[item], price: e.target.value } })} />
@@ -248,7 +294,17 @@ const GatheringPage = ({ userData, selectedDate, prices, uid }) => {
                 {savedData.map((item, index) => (
                   <tr key={index} className="border-b border-gray-700 last:border-0">
                     {activeTab === "Genel" && <td className="py-2 text-white">{item.profession}</td>}
-                    <td className="py-2 text-white">{item.itemName}</td>
+                    <td className="py-2 text-white">
+                      <div className="flex items-center gap-2">
+                        <img 
+                          src={getItemIcon(item.profession || activeTab, item.itemName)} 
+                          alt={item.itemName} 
+                          className="w-6 h-6 object-contain rounded bg-gray-900 p-0.5"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        {item.itemName}
+                      </div>
+                    </td>
                     <td className="py-2 text-right text-gray-300">{item.count}</td>
                     <td className="py-2 text-right text-gray-300">{item.price}</td>
                     <td className="py-2 text-right text-green-400 font-medium">{item.amount.toLocaleString()}c</td>

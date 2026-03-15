@@ -2,17 +2,19 @@ const rateLimit = require('express-rate-limit');
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 dakika
-  max: 250, // IP başına 15 dakikada max 250 istek (Optimize edildiği için limit düşürüldü)
+  max: 5000, // IP başına 15 dakikada max 5000 istek (Load test için artırıldı)
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
   message: { error: 'Çok fazla istek gönderildi. 15 dakika sonra tekrar deneyin.' }
 });
 
 const strictWriteLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100, // Yazma işlemleri için daha sıkı (Optimize edildiği için limit düşürüldü)
+  max: 1000, // Yazma işlemleri için (Load test için artırıldı)
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
   message: { error: 'Çok fazla yazma isteği. 15 dakika sonra tekrar deneyin.' }
 });
 

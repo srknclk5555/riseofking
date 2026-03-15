@@ -79,7 +79,6 @@ async function ensureUsersTable() {
 // Kullanıcı profili getirme
 const getProfile = async (req, res) => {
   try {
-    await ensureUsersTable();
     const { uid } = req.params;
     const actingUid = String(req.user?.uid || '');
     if (!actingUid || actingUid !== String(uid)) {
@@ -117,7 +116,6 @@ async function usersHasEmailColumn() {
 // Kullanıcı profili güncelleme
 const updateProfile = async (req, res) => {
   try {
-    await ensureUsersTable();
 
     const { uid } = req.params;
     const actingUid = String(req.user?.uid || '');
@@ -235,7 +233,6 @@ const updateProfile = async (req, res) => {
 // Arkadaş ekleme (Direct PostgreSQL JSONB)
 const addFriend = async (req, res) => {
   try {
-    await ensureUsersTable();
     const { uid } = req.params;
     const { nickname } = req.body;
 
@@ -270,7 +267,6 @@ const addFriend = async (req, res) => {
 // Arkadaş silme (Direct PostgreSQL JSONB)
 const deleteFriend = async (req, res) => {
   try {
-    await ensureUsersTable();
     const { uid, friendKey } = req.params;
 
     // JSONB anahtarını silmek için - operatörü kullanılır
@@ -289,7 +285,6 @@ const deleteFriend = async (req, res) => {
 // Arkadaş bağlama (UID resolve edildikten sonra) - Robust Fetch-Modify-Update Pattern
 const linkFriend = async (req, res) => {
   try {
-    await ensureUsersTable();
     const { uid, friendKey } = req.params;
     const { targetUid, targetUsername } = req.body;
 
@@ -333,7 +328,6 @@ const linkFriend = async (req, res) => {
 // Kullanıcıyı USERNAME (giriş adı) ile bulma
 const findUserByUsername = async (req, res) => {
   try {
-    await ensureUsersTable();
     const { username } = req.params;
     const cleanUsername = username.trim();
 
@@ -403,7 +397,6 @@ const findUserByUsername = async (req, res) => {
 // Liste çekme (Sadece username tanımlı olanlar)
 const getUsersWithUsernames = async (req, res) => {
   try {
-    await ensureUsersTable();
     const query = `SELECT uid, username FROM users WHERE username IS NOT NULL AND TRIM(username) != '' ORDER BY username LIMIT 100;`;
     const result = await db.query(query);
     res.json({ success: true, users: result.rows });
@@ -420,5 +413,6 @@ module.exports = {
   deleteFriend,
   linkFriend,
   findUserByUsername,
-  getUsersWithUsernames
+  getUsersWithUsernames,
+  ensureUsersTable
 };

@@ -9,6 +9,7 @@ const router = express.Router();
 const messageLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 dakika
     max: 20, // IP başına 20 mesaj
+    keyGenerator: (req) => req.ip,
     message: { error: 'Too many messages, please try again later.' }
 });
 

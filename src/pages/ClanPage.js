@@ -275,15 +275,30 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     try {
       // Enhancement seviyesini kaldır: "Divine Earring (+1)" -> "Divine Earring"
       const baseName = itemName.split(' (+')[0].split(' +')[0].trim();
+      let fileName = baseName;
+      let extension = 'png';
 
       // Özel durumlar: Golden Bar ve Silver Bar (JPG uzantılı ve farklı isimlendirme)
       if (baseName === "Golden Bar") return '/ui_icons/Gold_Bar.JPG';
       if (baseName === "Silver Bar") return '/ui_icons/Silver_Bar.JPG';
 
+      // Soulstone kontrolü
+      if (baseName.startsWith("Soulstone of")) {
+        extension = "PNG";
+      }
+      // Rune kontrolü
+      else if (baseName === "Unique Rune") {
+        fileName = "Uniqu_Rune"; // Dosyadaki typo
+        extension = "jfif";
+      }
+      else if (baseName === "Epic Rune") {
+        extension = "jfif";
+      }
+
       // Boşlukları alt tire ile değiştir
-      const snakeName = baseName.replace(/ /g, '_');
+      const snakeName = fileName.replace(/ /g, '_');
       // İkon yolunu oluştur
-      return `/ui_icons/Icon_Item_${snakeName}.png`;
+      return `/ui_icons/Icon_Item_${snakeName}.${extension}`;
     } catch (err) {
       console.error("Icon path error:", err);
       return null;
@@ -347,16 +362,21 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   */
 
 
-  // 3. Clan Bank Query
+  // 3. Clan Bank Query — klan seçiliyken her zaman çalışsın (boss sekmesinde run sonrası bakiye/item görünsün)
   const { data: bankQueryData } = useQuery({
     queryKey: ['clanBank', selectedClan?.id],
-    queryFn: () => clanBankService.getBankDetails(selectedClan.id),
-    enabled: !!selectedClan?.id && activeTab === 'bank',
+    queryFn: () => clanBankService.getClanBank(selectedClan.id),
+    enabled: !!selectedClan?.id,
     staleTime: 1 * 60 * 1000,
   });
 
   useEffect(() => {
-    if (bankQueryData) setBankData(bankQueryData);
+    if (bankQueryData) {
+      setBankData(bankQueryData);
+      setClanDebt(parseFloat(bankQueryData.clan_debt || 0));
+      setClanTax(parseFloat(bankQueryData.clan_tax || 0));
+      setDebtExplanation(bankQueryData.debt_explanation || '');
+    }
   }, [bankQueryData]);
 
   // 4. Clan Bank Transactions Query
@@ -758,6 +778,9 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       setShowCreateRunModal(false);
       resetRunForm();
       fetchClanBossRuns();
+      // Klan bakiyesi ve banka itemlerinin hemen görünmesi için banka verisini yenile
+      queryClient.invalidateQueries({ queryKey: ['clanBank', selectedClan.id] });
+      queryClient.invalidateQueries({ queryKey: ['soldItems', selectedClan.id] });
     } catch (error) {
       console.error('Boss run oluşturulamadı:', error);
       showNotification(error.message || 'Boss run oluşturulurken hata oluştu.', 'error');
@@ -844,6 +867,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       setRunToDelete(null);
       fetchClanBossRuns();
       refreshClanMembers(); // Sync scores after deletion
+      queryClient.invalidateQueries({ queryKey: ['clanBank', selectedClan.id] });
+      queryClient.invalidateQueries({ queryKey: ['soldItems', selectedClan.id] });
     } catch (error) {
       console.error('Boss run silinemedi:', error);
 
@@ -1233,13 +1258,13 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     return handleProcessTreasuryAction('pay_debt', amount, description, runId, dropId);
   };
 
-  // Menü açma/kapama
+  // Menü açma/kapama — herkes menüyü görsün; sadece "Clandan Çıkar" seçeneği klan liderine gösterilir
   const handleMemberClick = (e, member, clanId) => {
     e.preventDefault();
     e.stopPropagation();
 
-    // Leader kullanıcıları koru
-    if (member.role === 'leader') {
+    // Sadece klan lideri "Clandan Çıkar" işlemini yapabilsin; leader'a tıklanırsa uyar
+    if (selectedClan?.owner_id === uid && member.role === 'leader') {
       showNotification('Lider kullanıcıları clandan çıkaramazsınız', 'error');
       return;
     }
@@ -1324,6 +1349,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
               key={member.user_id}
               className="bg-white rounded-lg p-4 shadow border hover:shadow-lg transition-shadow cursor-pointer"
               onClick={(e) => {
+                if (clan.owner_id !== uid) return;
                 console.log('[CLAN] Card clicked for:', member.display_name || member.username);
                 console.log('[CLAN] Member role:', member.role);
 
@@ -1358,7 +1384,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   <div className="text-sm text-gray-500 capitalize">{member.role}</div>
                   <div className="text-xs text-gray-400">Katılma: {new Date(member.joined_at).toLocaleDateString()}</div>
                 </div>
-                {member.role !== 'leader' && (
+                {clan.owner_id === uid && member.role !== 'leader' && (
                   <div className="member-menu relative">
                     <button
                       onClick={(e) => {
@@ -3026,13 +3052,15 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
               <div className="text-sm font-bold text-white truncate">{contextMenu.member?.display_name || contextMenu.member?.username}</div>
             </div>
 
-            <button
-              className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-red-600/20 hover:text-red-400 flex items-center gap-3 transition-colors group"
-              onClick={() => startRemoveMember(contextMenu.member.clanId, contextMenu.member.user_id, contextMenu.member.display_name || contextMenu.member.username)}
-            >
-              <X size={16} className="text-gray-500 group-hover:text-red-400" />
-              Clandan Çıkar
-            </button>
+            {selectedClan?.owner_id === uid && (
+              <button
+                className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-red-600/20 hover:text-red-400 flex items-center gap-3 transition-colors group"
+                onClick={() => startRemoveMember(contextMenu.member.clanId, contextMenu.member.user_id, contextMenu.member.display_name || contextMenu.member.username)}
+              >
+                <X size={16} className="text-gray-500 group-hover:text-red-400" />
+                Clandan Çıkar
+              </button>
+            )}
 
             <button
               className="w-full text-left px-4 py-2.5 text-sm text-gray-400 hover:bg-gray-700 hover:text-white cursor-not-allowed flex items-center gap-3 transition-colors"

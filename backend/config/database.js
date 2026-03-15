@@ -11,6 +11,7 @@ if (isProduction || process.env.DATABASE_URL) {
   console.log('[DB CONFIG] Using DATABASE_URL (Production/Neon)');
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    max: 50, // Bağlantı havuzu büyütüldü
     ssl: {
       rejectUnauthorized: false
     }

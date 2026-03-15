@@ -24,4 +24,22 @@ router.get('/user/:userId/date/:date/event/:eventType/duration', EventController
 // Etkinlik süresini güncelle
 router.put('/user/:userId/date/:date/event/:eventType/duration', EventController.updateDuration);
 
+// Günlük planlı etkinlik takvimi (Crystal, Inferno, Death Match, Mount Race)
+router.get('/user/:userId/schedule/:date', EventController.getDailySchedule);
+
+// Planlı etkinlik sonucu (kazandım / kaybettim) güncelle
+router.post('/user/:userId/result', EventController.upsertResult);
+
+// Belirli tarih aralığı için etkinlik istatistikleri
+router.get('/user/:userId/stats', EventController.getStats);
+
+// Rapor özeti (sonuç + süre + verimlilik)
+router.get('/user/:userId/report/summary', EventController.getReportSummary);
+
+// Kazanç zaman serisi (tahminleme için)
+router.get('/user/:userId/report/timeseries/profit', EventController.getProfitTimeSeries);
+
+// Günlük breakdown (detaylı raporlar için)
+router.get('/user/:userId/report/breakdown/daily', EventController.getDailyBreakdown);
+
 module.exports = router;

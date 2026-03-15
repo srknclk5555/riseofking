@@ -8,11 +8,13 @@ const { generalLimiter } = require('./middleware/rateLimiter');
 const requestLogger = require('./middleware/requestLogger');
 const authMiddleware = require('./middleware/auth');
 const sanitizeMiddleware = require('./middleware/sanitize'); // 🔒 XSS Koruması
+const EventController = require('./controllers/eventController');
 
 const http = require('http');
 const socketManager = require('./socket/socketManager');
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
@@ -65,6 +67,7 @@ app.use('/api/clan-boss', require('./routes/clanBossRoutes'));
 app.use('/api/clan-bank', require('./routes/clanBankRoutes'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/users', require('./routes/userRoutes'));
+const { ensureUsersTable } = require('./controllers/userController');
 app.use('/api/discord', require('./routes/discord'));
 
 // Test route
@@ -84,6 +87,16 @@ server.listen(PORT, async () => {
   try {
     const result = await pool.query('SELECT NOW()');
     console.log('✓ PostgreSQL veritabanına başarıyla bağlandı');
+    
+    // Initialize schema
+    await ensureUsersTable();
+    console.log('✓ Veritabanı şeması doğrulandı');
+
+    // Initialize event schema
+    if (typeof EventController.ensureSchema === 'function') {
+      await EventController.ensureSchema();
+      console.log('✓ Etkinlik şeması ve takvimi doğrulandı');
+    }
   } catch (err) {
     console.error('✗ PostgreSQL bağlantı hatası:', err.message);
   }

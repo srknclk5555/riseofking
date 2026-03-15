@@ -8,6 +8,7 @@ const authMiddleware = require('../middleware/auth');
 const strictLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 10,
+    keyGenerator: (req) => req.ip,
     message: { error: 'Çok fazla istek gönderdiniz. Lütfen bir dakika bekleyin.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -17,6 +18,7 @@ const strictLimiter = rateLimit({
 const writeLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 30,
+    keyGenerator: (req) => req.ip,
     message: { error: 'Çok fazla istek gönderdiniz. Lütfen bir dakika bekleyin.' },
     standardHeaders: true,
     legacyHeaders: false,
