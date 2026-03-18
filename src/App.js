@@ -35,6 +35,9 @@ import * as authService from './services/authService';
 import socketService from './services/socketService';
 
 import clanBossService from './services/clanBossService';
+import ManualBanner from './components/ManualBanner';
+import TopCarouselBanner from './components/TopCarouselBanner';
+import VerticalBanner from './components/VerticalBanner';
 
 // --- APP ID ---
 const staticAppId = "rise_online_tracker_app";
@@ -110,6 +113,38 @@ export default function App() {
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [tooltipContent, setTooltipContent] = useState({});
   const tooltipRef = useRef(null);
+
+  // Gelişmiş Reklam Ayarları
+  const [adSettings, setAdSettings] = useState({
+    visibility: {
+      top: true,
+      left: true,
+      right: true,
+      sidebar: true
+    },
+    carouselInterval: 4000,
+    topHeight: 80, // Varsayılan yükseklik (px)
+    topAds: [
+      { id: 1, image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2070&auto=format&fit=crop', link: 'https://www.google.com' }
+    ],
+    leftAd: { image: 'https://images.unsplash.com/photo-1614850523296-62c0af475390?q=80&w=2070&auto=format&fit=crop', link: 'https://www.google.com' },
+    rightAd: { image: 'https://images.unsplash.com/photo-1614850523296-62c0af475390?q=80&w=2070&auto=format&fit=crop', link: 'https://www.google.com' },
+    sidebarAd: { image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2070&auto=format&fit=crop', link: 'https://www.google.com' }
+  });
+
+  // LocalStorage'dan gelişmiş reklam ayarlarını yükle
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('adSettings');
+    if (savedSettings) {
+      setAdSettings(JSON.parse(savedSettings));
+    }
+  }, []);
+
+  const updateAdSettings = (newSettings) => {
+    const updated = { ...adSettings, ...newSettings };
+    setAdSettings(updated);
+    localStorage.setItem('adSettings', JSON.stringify(updated));
+  };
 
   // Dinamik Tooltip Pozisyonlama: Viewport dışına taşmasını engeller
   useLayoutEffect(() => {
@@ -630,38 +665,51 @@ export default function App() {
   if (!userData) return <div className="h-screen bg-gray-900 flex items-center justify-center text-white">Profil verisi bekleniyor...</div>;
 
   return (
-    <div className="flex h-screen bg-gray-900 text-gray-100 overflow-hidden font-sans relative">
+    <div className="flex flex-col h-screen bg-gray-900 text-gray-100 overflow-hidden font-sans relative">
       <Notification message={notification.message} type={notification.type} onClose={() => setNotification({ message: null, type: 'success' })} />
 
-      <aside className="w-20 lg:w-64 bg-gray-800 border-r border-gray-700 flex flex-col transition-all duration-300">
-        <div className="p-4 border-b border-gray-700 flex items-center justify-center lg:justify-start gap-3">
-          <div className="bg-yellow-600 p-2 rounded-lg"><Sword size={24} className="text-white" /></div>
-          <div className="hidden lg:block"><h1 className="font-bold text-yellow-500 text-lg leading-none">RO WORLD</h1><span className="text-xs text-gray-400">Tracker App</span></div>
-        </div>
-        <nav className="flex-1 overflow-y-auto py-4 space-y-2 px-2">
-          <NavButton icon={<LayoutDashboard />} label="Özet Rapor" active={activeTab === "Dashboard"} onClick={() => setActiveTab("Dashboard")} />
-          <NavButton icon={<Pickaxe />} label="Toplama (Gathering)" active={activeTab === "Gathering"} onClick={() => setActiveTab("Gathering")} />
-          <NavButton icon={<Scroll />} label="Etkinlikler" active={activeTab === "Events"} onClick={() => setActiveTab("Events")} />
-          <NavButton icon={<Users />} label="Farm (Solo/Party)" active={activeTab === "Farm"} onClick={() => setActiveTab("Farm")} />
-          <NavButton icon={<MessageCircle />} label="Mesajlaşma" active={activeTab === "Messaging"} onClick={() => setActiveTab("Messaging")} />
-          <NavButton icon={<Crown />} label="Clan" active={activeTab === "Clan"} onClick={() => setActiveTab("Clan")} />
-          <NavButton icon={<Settings />} label="Ayarlar" active={activeTab === "Admin"} onClick={() => setActiveTab("Admin")} />
-          <NavButton icon={<MapPin />} label="Sistem" active={activeTab === "System"} onClick={() => setActiveTab("System")} />
-        </nav>
-        <div className="p-4 bg-gray-900 border-t border-gray-700">
-          <div className="flex flex-col items-center">
-            <span className="text-gray-400 text-xs mb-1 font-bold tracking-wider">KRONOMETRE</span>
-            <div className="text-2xl font-mono text-white mb-2">{formatTime(timer.seconds)}</div>
-            <div className="flex gap-2">
-              <button onClick={() => setTimer(prev => ({ ...prev, running: !prev.running }))} className={`p-2 rounded-full ${timer.running ? 'bg-red-600' : 'bg-green-600'}`}>{timer.running ? <Pause size={16} /> : <Play size={16} />}</button>
-              <button onClick={() => setTimer(prev => ({ ...prev, seconds: 0, running: false }))} className="p-2 bg-gray-700 rounded-full"><RefreshCw size={16} /></button>
+      {/* ANA SCROLL KONTEYNERİ */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar scroll-smooth flex flex-col relative">
+        
+        {/* SIDEBAR VE ANA İÇERİK YAN YANA */}
+        <div className="flex flex-1 relative min-h-screen">
+          
+          <aside className="w-20 lg:w-64 bg-gray-800 border-r border-gray-700 flex flex-col transition-all duration-300 sticky top-0 h-[100vh]">
+            <div className="p-4 border-b border-gray-700 flex items-center justify-center lg:justify-start gap-3">
+              <div className="bg-yellow-600 p-2 rounded-lg"><Sword size={24} className="text-white" /></div>
+              <div className="hidden lg:block"><h1 className="font-bold text-yellow-500 text-lg leading-none">RO WORLD</h1><span className="text-xs text-gray-400">Tracker App</span></div>
             </div>
-          </div>
-        </div>
-      </aside>
+            <nav className="flex-1 overflow-y-auto py-4 space-y-2 px-2">
+              <NavButton icon={<LayoutDashboard />} label="Özet Rapor" active={activeTab === "Dashboard"} onClick={() => setActiveTab("Dashboard")} />
+              <NavButton icon={<Pickaxe />} label="Toplama (Gathering)" active={activeTab === "Gathering"} onClick={() => setActiveTab("Gathering")} />
+              <NavButton icon={<Scroll />} label="Etkinlikler" active={activeTab === "Events"} onClick={() => setActiveTab("Events")} />
+              <NavButton icon={<Users />} label="Farm (Solo/Party)" active={activeTab === "Farm"} onClick={() => setActiveTab("Farm")} />
+              <NavButton icon={<MessageCircle />} label="Mesajlaşma" active={activeTab === "Messaging"} onClick={() => setActiveTab("Messaging")} />
+              <NavButton icon={<Crown />} label="Clan" active={activeTab === "Clan"} onClick={() => setActiveTab("Clan")} />
+              <NavButton icon={<Settings />} label="Ayarlar" active={activeTab === "Admin"} onClick={() => setActiveTab("Admin")} />
+              <NavButton icon={<MapPin />} label="Sistem" active={activeTab === "System"} onClick={() => setActiveTab("System")} />
+              
+              {/* Yan Menü Reklamı */}
+              <ManualBanner adConfig={{ ...adSettings.sidebarAd, isActive: adSettings.visibility.sidebar }} />
+            </nav>
+            <div className="p-4 bg-gray-900 border-t border-gray-700">
+              <div className="flex flex-col items-center">
+                <span className="text-gray-400 text-xs mb-1 font-bold tracking-wider">KRONOMETRE</span>
+                <div className="text-2xl font-mono text-white mb-2">{formatTime(timer.seconds)}</div>
+                <div className="flex gap-2">
+                  <button onClick={() => setTimer(prev => ({ ...prev, running: !prev.running }))} className={`p-2 rounded-full ${timer.running ? 'bg-red-600' : 'bg-green-600'}`}>{timer.running ? <Pause size={16} /> : <Play size={16} />}</button>
+                  <button onClick={() => setTimer(prev => ({ ...prev, seconds: 0, running: false }))} className="p-2 bg-gray-700 rounded-full"><RefreshCw size={16} /></button>
+                </div>
+              </div>
+            </div>
+          </aside>
 
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        <header className="h-16 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-6 shadow-md z-10 relative">
+          <main className="flex-1 flex flex-col relative">
+            {/* Dikey Reklamlar (Fixed Viewport) */}
+            <VerticalBanner adConfig={{ ...adSettings.leftAd, isActive: adSettings.visibility.left }} position="left" />
+            <VerticalBanner adConfig={{ ...adSettings.rightAd, isActive: adSettings.visibility.right }} position="right" />
+
+            <header className="h-16 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-6 shadow-md z-20 sticky top-0 shrink-0">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 bg-gray-700 px-3 py-1.5 rounded-lg border border-gray-600">
               <History size={16} className="text-gray-400" />
@@ -733,143 +781,172 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+        {/* ÜST REKLAM - ARTIK HEADER ALTINDA VE SAYFAYLA KAYAR */}
+        <div className="flex-shrink-0 w-full">
+          <TopCarouselBanner 
+            ads={adSettings.topAds} 
+            interval={adSettings.carouselInterval} 
+            isActive={adSettings.visibility.top} 
+            height={adSettings.topHeight}
+          />
+        </div>
+
+        <div className="flex-1 p-4 md:p-8">
           {activeTab === "Dashboard" && <DashboardPage userData={userData} selectedDate={selectedDate} farms={farms} user={user} />}
           {activeTab === "Gathering" && <GatheringPage userData={userData} selectedDate={selectedDate} prices={prices} uid={user.uid} />}
           {activeTab === "Events" && <EventsPage userData={userData} selectedDate={selectedDate} prices={prices} uid={user.uid} />}
           {activeTab === "Farm" && <FarmPage farms={farms} userData={userData} selectedDate={selectedDate} uid={user.uid} showNotification={showNotification} targetFarmId={targetFarmId} setTargetFarmId={setTargetFarmId} checkRateLimit={checkRateLimit} />}
           {activeTab === "Messaging" && <MessagingPage userData={userData} uid={user.uid} messages={privateMessages} checkRateLimit={checkRateLimit} showNotification={showNotification} refreshMessages={refreshMessages} />}
           {activeTab === "Clan" && <ClanPage userData={userData} uid={user.uid} showNotification={showNotification} showTooltip={showTooltip} hideTooltip={hideTooltip} />}
-          {activeTab === "Admin" && <AdminPage userData={userData} uid={user.uid} prices={prices} showNotification={showNotification} setActiveTab={setActiveTab} onlineUsers={onlineUsers} checkRateLimit={checkRateLimit} globalItems={globalItems} showTooltip={showTooltip} hideTooltip={hideTooltip} refreshFriends={refreshFriends} />}
+          {activeTab === "Admin" && (
+            <AdminPage 
+              userData={userData} 
+              uid={user.uid} 
+              prices={prices} 
+              showNotification={showNotification} 
+              setActiveTab={setActiveTab} 
+              onlineUsers={onlineUsers} 
+              checkRateLimit={checkRateLimit} 
+              globalItems={globalItems} 
+              showTooltip={showTooltip} 
+              hideTooltip={hideTooltip} 
+              refreshFriends={refreshFriends}
+              adSettings={adSettings}
+              updateAdSettings={updateAdSettings}
+            />
+          )}
           {activeTab === "System" && <SystemPage userData={userData} uid={user.uid} showNotification={showNotification} checkRateLimit={checkRateLimit} />}
         </div>
       </main>
-      {/* Zengin Tooltip */}
-      {tooltipVisible && (
-        <div
-          id="item-tooltip"
-          ref={tooltipRef}
-          className="fixed w-[320px] bg-gray-900 border border-gray-600 shadow-[0_0_30px_rgba(0,0,0,0.9)] backdrop-blur-md rounded-lg p-5 pointer-events-none transition-opacity duration-100 z-[1000]"
-          style={{
-            opacity: tooltipVisible ? 1 : 0,
-            left: '-1000px', // İlk render'da dışarıda kalsın, useLayoutEffect hemen düzeltecek
-            top: '-1000px'
-          }}
-        >
-          <div className="border-b border-white/10 pb-3 mb-3 text-center">
-            <div className="font-extrabold text-xl leading-tight mb-1 px-2 py-2 rounded" style={getRarityStyles(tooltipContent.rarity)}>
-              {tooltipContent.name || tooltipContent.itemName || "Bilinmeyen Eşya"}
-            </div>
-            <div className="flex justify-center gap-3 text-[10px] uppercase font-bold tracking-widest">
-              <span style={tooltipContent.rarity ? getRarityStyles(tooltipContent.rarity) : {}}>
-                {tooltipContent.rarity || "Normal"}
-              </span>
-              <span className="text-gray-500">
-                {tooltipContent.itemType || "Eşya"}
-              </span>
-            </div>
-          </div>
+    </div>
+  </div>
 
-          <div className="space-y-1.5 text-[11px] font-bold">
-            {tooltipContent.level && (
-              <div className="text-white flex justify-between"><span>Seviye:</span> <span>+{tooltipContent.level}</span></div>
-            )}
-            {tooltipContent.gearScore && (
-              <div className="text-yellow-500 flex justify-between"><span>Gear Score:</span> <span>{tooltipContent.gearScore}</span></div>
-            )}
-            {tooltipContent.class && (
-              <div className="text-white flex justify-between"><span>Sınıf (Class):</span> <span>{tooltipContent.class}</span></div>
-            )}
-            {tooltipContent.itemType && (
-              <div className="text-white flex justify-between"><span>İtem Çeşidi:</span> <span>{tooltipContent.itemType}</span></div>
-            )}
-
-            <div className="pt-1.5 space-y-1">
-              {tooltipContent.physicalDefenseBonus && (
-                <div className="text-green-400 flex justify-between"><span>Fiziksel Savunma Bonusu:</span> <span>+{tooltipContent.physicalDefenseBonus}</span></div>
-              )}
-              {tooltipContent.strengthBonus && (
-                <div className="text-green-400 flex justify-between"><span>Strength Bonus:</span> <span>+{tooltipContent.strengthBonus}</span></div>
-              )}
-              {tooltipContent.dexterityBonus && (
-                <div className="text-green-400 flex justify-between"><span>Dexterity Bonus:</span> <span>+{tooltipContent.dexterityBonus}</span></div>
-              )}
-              {tooltipContent.intelligenceBonus && (
-                <div className="text-green-400 flex justify-between"><span>Intelligence Bonus:</span> <span>+{tooltipContent.intelligenceBonus}</span></div>
-              )}
-              {tooltipContent.magicBonus && (
-                <div className="text-green-400 flex justify-between"><span>Magic Bonus:</span> <span>+{tooltipContent.magicBonus}</span></div>
-              )}
-              {tooltipContent.healthBonus && (
-                <div className="text-green-400 flex justify-between"><span>Health Bonus:</span> <span>+{tooltipContent.healthBonus}</span></div>
-              )}
-              {tooltipContent.hpBonus && (
-                <div className="text-green-400 flex justify-between"><span>HP Bonusu:</span> <span>+{tooltipContent.hpBonus}</span></div>
-              )}
-              {tooltipContent.mpBonus && (
-                <div className="text-green-400 flex justify-between"><span>MP Bonusu:</span> <span>+{tooltipContent.mpBonus}</span></div>
-              )}
-              {tooltipContent.fireResistance && (
-                <div className="text-orange-400 flex justify-between"><span>Ateş Hasarı Direnci:</span> <span>+{tooltipContent.fireResistance}</span></div>
-              )}
-              {tooltipContent.iceResistance && (
-                <div className="text-blue-300 flex justify-between"><span>Buz Hasarı Direnci:</span> <span>+{tooltipContent.iceResistance}</span></div>
-              )}
-              {tooltipContent.lightningResistance && (
-                <div className="text-yellow-300 flex justify-between"><span>Yıldırım Hasarı Direnci:</span> <span>+{tooltipContent.lightningResistance}</span></div>
-              )}
-              {tooltipContent.poisonResistance && (
-                <div className="text-green-300 flex justify-between"><span>Zehir Hasarı Direnci:</span> <span>+{tooltipContent.poisonResistance}</span></div>
-              )}
-              {tooltipContent.holyResistance && (
-                <div className="text-green-300 flex justify-between"><span>Kutsal Hasarı Direnci:</span> <span>+{tooltipContent.holyResistance}</span></div>
-              )}
-              {tooltipContent.curseResistance && (
-                <div className="text-green-300 flex justify-between"><span>Lanet Hasarı Direnci:</span> <span>+{tooltipContent.curseResistance}</span></div>
-              )}
-              {tooltipContent.daggerDefense && (
-                <div className="text-green-300 flex justify-between"><span>Hançer Savunması:</span> <span>+{tooltipContent.daggerDefense}</span></div>
-              )}
-              {tooltipContent.swordDefense && (
-                <div className="text-green-300 flex justify-between"><span>Kılıç Savunması:</span> <span>+{tooltipContent.swordDefense}</span></div>
-              )}
-              {tooltipContent.maceDefense && (
-                <div className="text-green-300 flex justify-between"><span>Topuz Savunması:</span> <span>+{tooltipContent.maceDefense}</span></div>
-              )}
-              {tooltipContent.axeDefense && (
-                <div className="text-green-300 flex justify-between"><span>Balta Savunması:</span> <span>+{tooltipContent.axeDefense}</span></div>
-              )}
-              {tooltipContent.spearDefense && (
-                <div className="text-green-300 flex justify-between"><span>Mızrak Savunması:</span> <span>+{tooltipContent.spearDefense}</span></div>
-              )}
-              {tooltipContent.bowDefense && (
-                <div className="text-green-300 flex justify-between"><span>Yay Savunması:</span> <span>+{tooltipContent.bowDefense}</span></div>
-              )}
-              {tooltipContent.fireDamage && (
-                <div className="text-green-400 flex justify-between"><span>Ateş Hasarı:</span> <span>+{tooltipContent.fireDamage}</span></div>
-              )}
-              {tooltipContent.iceDamage && (
-                <div className="text-green-400 flex justify-between"><span>Buz Hasarı:</span> <span>+{tooltipContent.iceDamage}</span></div>
-              )}
-              {tooltipContent.lightningDamage && (
-                <div className="text-green-400 flex justify-between"><span>Yıldırım Hasarı:</span> <span>+{tooltipContent.lightningDamage}</span></div>
-              )}
-              {tooltipContent.expBonus && tooltipContent.expBonus !== 0 && (
-                <div className="text-green-400 flex justify-between"><span>EXP Bonusu (%):</span> <span>+{tooltipContent.expBonus}%</span></div>
-              )}
-              {tooltipContent.coinBonus && tooltipContent.coinBonus !== 0 && (
-                <div className="text-green-400 flex justify-between"><span>Coin Bonusu (%):</span> <span>+{tooltipContent.coinBonus}%</span></div>
-              )}
-              {tooltipContent.attackBonusAllMobs && (
-                <div className="text-green-400 flex justify-between"><span>Tüm Yaratıklara Karşı Saldırı (%):</span> <span>+{tooltipContent.attackBonusAllMobs}%</span></div>
-              )}
-              {tooltipContent.bpBonusPerKill && (
-                <div className="text-green-400 flex justify-between"><span>Öldürme Başına BP Bonusu:</span> <span>+{tooltipContent.bpBonusPerKill}</span></div>
-              )}
-            </div>
-          </div>
+  {/* Zengin Tooltip */}
+  {tooltipVisible && (
+    <div
+      id="item-tooltip"
+      ref={tooltipRef}
+      className="fixed w-[320px] bg-gray-900 border border-gray-600 shadow-[0_0_30px_rgba(0,0,0,0.9)] backdrop-blur-md rounded-lg p-5 pointer-events-none transition-opacity duration-100 z-[1000]"
+      style={{
+        opacity: tooltipVisible ? 1 : 0,
+        left: '-1000px', // İlk render'da dışarıda kalsın, useLayoutEffect hemen düzeltecek
+        top: '-1000px'
+      }}
+    >
+      <div className="border-b border-white/10 pb-3 mb-3 text-center">
+        <div className="font-extrabold text-xl leading-tight mb-1 px-2 py-2 rounded" style={getRarityStyles(tooltipContent.rarity)}>
+          {tooltipContent.name || tooltipContent.itemName || "Bilinmeyen Eşya"}
         </div>
-      )}
+        <div className="flex justify-center gap-3 text-[10px] uppercase font-bold tracking-widest">
+          <span style={tooltipContent.rarity ? getRarityStyles(tooltipContent.rarity) : {}}>
+            {tooltipContent.rarity || "Normal"}
+          </span>
+          <span className="text-gray-500">
+            {tooltipContent.itemType || "Eşya"}
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-1.5 text-[11px] font-bold">
+        {tooltipContent.level && (
+          <div className="text-white flex justify-between"><span>Seviye:</span> <span>+{tooltipContent.level}</span></div>
+        )}
+        {tooltipContent.gearScore && (
+          <div className="text-yellow-500 flex justify-between"><span>Gear Score:</span> <span>{tooltipContent.gearScore}</span></div>
+        )}
+        {tooltipContent.class && (
+          <div className="text-white flex justify-between"><span>Sınıf (Class):</span> <span>{tooltipContent.class}</span></div>
+        )}
+        {tooltipContent.itemType && (
+          <div className="text-white flex justify-between"><span>İtem Çeşidi:</span> <span>{tooltipContent.itemType}</span></div>
+        )}
+
+        <div className="pt-1.5 space-y-1">
+          {tooltipContent.physicalDefenseBonus && (
+            <div className="text-green-400 flex justify-between"><span>Fiziksel Savunma Bonusu:</span> <span>+{tooltipContent.physicalDefenseBonus}</span></div>
+          )}
+          {tooltipContent.strengthBonus && (
+            <div className="text-green-400 flex justify-between"><span>Strength Bonus:</span> <span>+{tooltipContent.strengthBonus}</span></div>
+          )}
+          {tooltipContent.dexterityBonus && (
+            <div className="text-green-400 flex justify-between"><span>Dexterity Bonus:</span> <span>+{tooltipContent.dexterityBonus}</span></div>
+          )}
+          {tooltipContent.intelligenceBonus && (
+            <div className="text-green-400 flex justify-between"><span>Intelligence Bonus:</span> <span>+{tooltipContent.intelligenceBonus}</span></div>
+          )}
+          {tooltipContent.magicBonus && (
+            <div className="text-green-400 flex justify-between"><span>Magic Bonus:</span> <span>+{tooltipContent.magicBonus}</span></div>
+          )}
+          {tooltipContent.healthBonus && (
+            <div className="text-green-400 flex justify-between"><span>Health Bonus:</span> <span>+{tooltipContent.healthBonus}</span></div>
+          )}
+          {tooltipContent.hpBonus && (
+            <div className="text-green-400 flex justify-between"><span>HP Bonusu:</span> <span>+{tooltipContent.hpBonus}</span></div>
+          )}
+          {tooltipContent.mpBonus && (
+            <div className="text-green-400 flex justify-between"><span>MP Bonusu:</span> <span>+{tooltipContent.mpBonus}</span></div>
+          )}
+          {tooltipContent.fireResistance && (
+            <div className="text-orange-400 flex justify-between"><span>Ateş Hasarı Direnci:</span> <span>+{tooltipContent.fireResistance}</span></div>
+          )}
+          {tooltipContent.iceResistance && (
+            <div className="text-blue-300 flex justify-between"><span>Buz Hasarı Direnci:</span> <span>+{tooltipContent.iceResistance}</span></div>
+          )}
+          {tooltipContent.lightningResistance && (
+            <div className="text-yellow-300 flex justify-between"><span>Yıldırım Hasarı Direnci:</span> <span>+{tooltipContent.lightningResistance}</span></div>
+          )}
+          {tooltipContent.poisonResistance && (
+            <div className="text-green-300 flex justify-between"><span>Zehir Hasarı Direnci:</span> <span>+{tooltipContent.poisonResistance}</span></div>
+          )}
+          {tooltipContent.holyResistance && (
+            <div className="text-green-300 flex justify-between"><span>Kutsal Hasarı Direnci:</span> <span>+{tooltipContent.holyResistance}</span></div>
+          )}
+          {tooltipContent.curseResistance && (
+            <div className="text-green-300 flex justify-between"><span>Lanet Hasarı Direnci:</span> <span>+{tooltipContent.curseResistance}</span></div>
+          )}
+          {tooltipContent.daggerDefense && (
+            <div className="text-green-300 flex justify-between"><span>Hançer Savunması:</span> <span>+{tooltipContent.daggerDefense}</span></div>
+          )}
+          {tooltipContent.swordDefense && (
+            <div className="text-green-300 flex justify-between"><span>Kılıç Savunması:</span> <span>+{tooltipContent.swordDefense}</span></div>
+          )}
+          {tooltipContent.maceDefense && (
+            <div className="text-green-300 flex justify-between"><span>Topuz Savunması:</span> <span>+{tooltipContent.maceDefense}</span></div>
+          )}
+          {tooltipContent.axeDefense && (
+            <div className="text-green-300 flex justify-between"><span>Balta Savunması:</span> <span>+{tooltipContent.axeDefense}</span></div>
+          )}
+          {tooltipContent.spearDefense && (
+            <div className="text-green-300 flex justify-between"><span>Mızrak Savunması:</span> <span>+{tooltipContent.spearDefense}</span></div>
+          )}
+          {tooltipContent.bowDefense && (
+            <div className="text-green-300 flex justify-between"><span>Yay Savunması:</span> <span>+{tooltipContent.bowDefense}</span></div>
+          )}
+          {tooltipContent.fireDamage && (
+            <div className="text-green-400 flex justify-between"><span>Ateş Hasarı:</span> <span>+{tooltipContent.fireDamage}</span></div>
+          )}
+          {tooltipContent.iceDamage && (
+            <div className="text-green-400 flex justify-between"><span>Buz Hasarı:</span> <span>+{tooltipContent.iceDamage}</span></div>
+          )}
+          {tooltipContent.lightningDamage && (
+            <div className="text-green-400 flex justify-between"><span>Yıldırım Hasarı:</span> <span>+{tooltipContent.lightningDamage}</span></div>
+          )}
+          {tooltipContent.expBonus && tooltipContent.expBonus !== 0 && (
+            <div className="text-green-400 flex justify-between"><span>EXP Bonusu (%):</span> <span>+{tooltipContent.expBonus}%</span></div>
+          )}
+          {tooltipContent.coinBonus && tooltipContent.coinBonus !== 0 && (
+            <div className="text-green-400 flex justify-between"><span>Coin Bonusu (%):</span> <span>+{tooltipContent.coinBonus}%</span></div>
+          )}
+          {tooltipContent.attackBonusAllMobs && (
+            <div className="text-green-400 flex justify-between"><span>Tüm Yaratıklara Karşı Saldırı (%):</span> <span>+{tooltipContent.attackBonusAllMobs}%</span></div>
+          )}
+          {tooltipContent.bpBonusPerKill && (
+            <div className="text-green-400 flex justify-between"><span>Öldürme Başına BP Bonusu:</span> <span>+{tooltipContent.bpBonusPerKill}</span></div>
+          )}
+        </div>
+      </div>
+    </div>
+  )}
     </div>
   );
 }

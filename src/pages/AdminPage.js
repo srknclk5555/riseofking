@@ -3,7 +3,7 @@ import { userService } from '../services/api';
 import DiscordSettings from '../components/DiscordSettings';
 import { Plus, Trash2, AlertCircle, Save, LinkIcon, Check, Shield } from 'lucide-react';
 
-const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFriends }) => {
+const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFriends, adSettings, updateAdSettings }) => {
   const [activeAdminTab, setActiveAdminTab] = useState("Profile");
   const [activeSubTab, setActiveSubTab] = useState("K\u0130\u015f\u0130SEL");
   const [mainCharacter, setMainCharacter] = useState("");
@@ -13,6 +13,37 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
   const [friendNick, setFriendNick] = useState("");
   const [linkInputs, setLinkInputs] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Carousel Yönetimi için geçici state'ler
+  const [newAdImage, setNewAdImage] = useState("");
+  const [newAdLink, setNewAdLink] = useState("");
+
+  const addTopAd = () => {
+    if (!newAdImage || !newAdLink) {
+      showNotification("Lütfen görsel ve link alanlarını doldurun.", "error");
+      return;
+    }
+    const newAds = [...(adSettings.topAds || []), { id: Date.now(), image: newAdImage, link: newAdLink }];
+    updateAdSettings({ topAds: newAds });
+    setNewAdImage("");
+    setNewAdLink("");
+    showNotification("Yeni reklam eklendi!");
+  };
+
+  const removeTopAd = (id) => {
+    const newAds = adSettings.topAds.filter(ad => ad.id !== id);
+    updateAdSettings({ topAds: newAds });
+    showNotification("Reklam kaldırıldı.");
+  };
+
+  const toggleVisibility = (area) => {
+    updateAdSettings({
+      visibility: {
+        ...adSettings.visibility,
+        [area]: !adSettings.visibility[area]
+      }
+    });
+  };
 
   useEffect(() => {
     if (!uid) return;
@@ -164,6 +195,7 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
       <div className="flex gap-4 border-b border-gray-700 pb-2">
         <button onClick={() => setActiveAdminTab("Profile")} className={`px-4 py-2 ${activeAdminTab === "Profile" ? "text-yellow-500 border-b-2 border-yellow-500" : "text-gray-400"}`}>Profil & Oyuncular</button>
         <button onClick={() => setActiveAdminTab("Items")} className={`px-4 py-2 ${activeAdminTab === "Items" ? "text-yellow-500 border-b-2 border-yellow-500" : "text-gray-400"}`}>Ayarlar</button>
+        <button onClick={() => setActiveAdminTab("Advertising")} className={`px-4 py-2 ${activeAdminTab === "Advertising" ? "text-yellow-500 border-b-2 border-yellow-500" : "text-gray-400"}`}>Reklam Yönetimi</button>
       </div>
 
       {activeAdminTab === "Profile" && (
@@ -288,6 +320,105 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
       {activeAdminTab === "Items" && (
         <div className="space-y-6">
           <DiscordSettings uid={uid} showNotification={showNotification} />
+        </div>
+      )}
+
+      {activeAdminTab === "Advertising" && (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-8">
+          <div className="flex justify-between items-center border-b border-gray-700 pb-4">
+            <h3 className="text-white font-bold text-lg">Gelişmiş Reklam Ayarları</h3>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" checked={adSettings.visibility.top} onChange={() => toggleVisibility('top')} className="w-4 h-4 accent-yellow-500" />
+                <span className="text-sm text-gray-300 group-hover:text-white transition-colors">Üst Carousel</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" checked={adSettings.visibility.left} onChange={() => toggleVisibility('left')} className="w-4 h-4 accent-yellow-500" />
+                <span className="text-sm text-gray-300 group-hover:text-white transition-colors">Sol Dikey</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" checked={adSettings.visibility.right} onChange={() => toggleVisibility('right')} className="w-4 h-4 accent-yellow-500" />
+                <span className="text-sm text-gray-300 group-hover:text-white transition-colors">Sağ Dikey</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input type="checkbox" checked={adSettings.visibility.sidebar} onChange={() => toggleVisibility('sidebar')} className="w-4 h-4 accent-yellow-500" />
+                <span className="text-sm text-gray-300 group-hover:text-white transition-colors">Yan Menü</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Carousel Yönetimi */}
+          <div className="space-y-4">
+            <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-widest">Üst Carousel Yönetimi</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+              <div className="space-y-3">
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (Örn: https://.../resim.jpg)" value={newAdImage} onChange={e => setNewAdImage(e.target.value)} />
+                <p className="text-[10px] text-gray-500 -mt-2 ml-1">İpucu: Linkin sonu .jpg veya .png ile bitmelidir. (Hızlı Resim'de resme sağ tıklayıp "Resim adresini kopyala" deyin)</p>
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Tıklandığında gidecek Link" value={newAdLink} onChange={e => setNewAdLink(e.target.value)} />
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 text-center">
+                    <label className="text-xs text-gray-500 block mb-1">Geçiş (Saniye)</label>
+                    <input type="number" className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" value={adSettings.carouselInterval / 1000} onChange={e => updateAdSettings({ carouselInterval: Number(e.target.value) * 1000 })} min="1" max="60" />
+                  </div>
+                  <div className="flex-1 text-center">
+                    <label className="text-xs text-gray-500 block mb-1">Yükseklik (PX)</label>
+                    <input type="number" className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" value={adSettings.topHeight} onChange={e => updateAdSettings({ topHeight: Number(e.target.value) })} min="40" max="600" />
+                  </div>
+                  <button onClick={addTopAd} className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded font-bold h-10 self-end transition-colors flex items-center gap-2">
+                    <Plus size={18} /> Ekle
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-y-auto max-h-[160px] space-y-2 custom-scrollbar pr-2">
+                {adSettings.topAds.map(ad => (
+                  <div key={ad.id} className="flex items-center gap-3 bg-gray-800 p-2 rounded border border-gray-700 group">
+                    <img src={ad.image} className="w-12 h-8 object-cover rounded" alt="ad" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-gray-400 truncate">{ad.image}</p>
+                      <p className="text-[10px] text-yellow-500 truncate">{ad.link}</p>
+                    </div>
+                    <button onClick={() => removeTopAd(ad.id)} className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-500/10 rounded">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Dikey Reklam Yönetimi */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-widest">Sol Dikey Reklam</h4>
+              <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 space-y-3">
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (.jpg, .png)" value={adSettings.leftAd.image} onChange={e => updateAdSettings({ leftAd: { ...adSettings.leftAd, image: e.target.value } })} />
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Link" value={adSettings.leftAd.link} onChange={e => updateAdSettings({ leftAd: { ...adSettings.leftAd, link: e.target.value } })} />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-widest">Sağ Dikey Reklam</h4>
+              <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 space-y-3">
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (.jpg, .png)" value={adSettings.rightAd.image} onChange={e => updateAdSettings({ rightAd: { ...adSettings.rightAd, image: e.target.value } })} />
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Link" value={adSettings.rightAd.link} onChange={e => updateAdSettings({ rightAd: { ...adSettings.rightAd, link: e.target.value } })} />
+              </div>
+            </div>
+          </div>
+
+          {/* Yan Menü Reklam Yönetimi */}
+          <div className="space-y-3">
+            <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-widest">Yan Menü (Sidebar) Reklamı</h4>
+            <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (.jpg, .png)" value={adSettings.sidebarAd?.image} onChange={e => updateAdSettings({ sidebarAd: { ...adSettings.sidebarAd, image: e.target.value } })} />
+              <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Link" value={adSettings.sidebarAd?.link} onChange={e => updateAdSettings({ sidebarAd: { ...adSettings.sidebarAd, link: e.target.value } })} />
+            </div>
+          </div>
+          
+          <div className="p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
+            <p className="text-yellow-500 text-xs flex gap-2 items-start leading-relaxed">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              Tüm ayarlar tarayıcınıza otomatik olarak kaydedilir. "Aktif" kutucuklarını işaretleyerek reklam alanlarını istediğiniz zaman gizleyebilir veya gösterebilirsiniz.
+            </p>
+          </div>
         </div>
       )}
     </div>

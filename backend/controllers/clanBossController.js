@@ -40,18 +40,8 @@ const createClanBossRun = async (req, res) => {
                 [runId, clanId, 'Shallow Fever', runDate, userId, screenshotUrl || null]
             );
 
-            // 1. Oluşturan kullanıcıyı otomatik katılımcı olarak ekle
-            const creatorResult = await client.query(
-                'SELECT "mainCharacter" FROM users WHERE uid = $1',
-                [userId]
-            );
-            const creatorMainChar = creatorResult.rows[0]?.mainCharacter || 'Bilinmeyen';
-
-            await client.query(
-                `INSERT INTO clan_boss_participants (run_id, user_id, main_character, is_paid) 
-                 VALUES ($1, $2, $3, false)`,
-                [runId, userId, creatorMainChar]
-            );
+            // NOT: Oluşturan kullanıcı artık otomatik olarak eklenmez.
+            // Katılımcı listesinde varsa aşağıdaki döngüde eklenir.
 
             // Bar item ID'leri skorlama için gerekli; droplar işlenmeden önce çek
             const silverBarResult = await client.query(`
@@ -82,37 +72,35 @@ const createClanBossRun = async (req, res) => {
                 [pointsEarned, clanId, userId]
             );
 
-            // 2. Diğer katılımcıları ekle (Sadece klan üyesi olanlar)
+            // 2. Katılımcıları ekle (Sadece klan üyesi olanlar, oluşturan dahil)
             if (participants && Array.isArray(participants)) {
                 for (const pUid of participants) {
-                    if (pUid !== userId) { // Kendini zaten ekledik
-                        // Klan üyesi mi kontrol et
-                        const isMember = await client.query(
-                            'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2',
-                            [clanId, pUid]
+                    // Klan üyesi mi kontrol et
+                    const isMember = await client.query(
+                        'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+                        [clanId, pUid]
+                    );
+
+                    if (isMember.rows.length > 0) {
+                        const userResult = await client.query(
+                            'SELECT "mainCharacter" FROM users WHERE uid = $1',
+                            [pUid]
+                        );
+                        const pMainChar = userResult.rows[0]?.mainCharacter || 'Bilinmeyen';
+
+                        await client.query(
+                            `INSERT INTO clan_boss_participants (run_id, user_id, main_character, is_paid) 
+                             VALUES ($1, $2, $3, false)
+                             ON CONFLICT (run_id, user_id) DO NOTHING`,
+                            [runId, pUid, pMainChar]
                         );
 
-                        if (isMember.rows.length > 0) {
-                            const userResult = await client.query(
-                                'SELECT "mainCharacter" FROM users WHERE uid = $1',
-                                [pUid]
-                            );
-                            const pMainChar = userResult.rows[0]?.mainCharacter || 'Bilinmeyen';
-
-                            await client.query(
-                                `INSERT INTO clan_boss_participants (run_id, user_id, main_character, is_paid) 
-                                 VALUES ($1, $2, $3, false)
-                                 ON CONFLICT (run_id, user_id) DO NOTHING`,
-                                [runId, pUid, pMainChar]
-                            );
-
-                            await client.query(
-                                `UPDATE clan_members 
-                                 SET participation_score = GREATEST(0, participation_score + $1) 
-                                 WHERE clan_id = $2 AND user_id = $3`,
-                                [pointsEarned, clanId, pUid]
-                            );
-                        }
+                        await client.query(
+                            `UPDATE clan_members 
+                             SET participation_score = GREATEST(0, participation_score + $1) 
+                             WHERE clan_id = $2 AND user_id = $3`,
+                            [pointsEarned, clanId, pUid]
+                        );
                     }
                 }
             }
