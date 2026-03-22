@@ -195,7 +195,9 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
       <div className="flex gap-4 border-b border-gray-700 pb-2">
         <button onClick={() => setActiveAdminTab("Profile")} className={`px-4 py-2 ${activeAdminTab === "Profile" ? "text-yellow-500 border-b-2 border-yellow-500" : "text-gray-400"}`}>Profil & Oyuncular</button>
         <button onClick={() => setActiveAdminTab("Items")} className={`px-4 py-2 ${activeAdminTab === "Items" ? "text-yellow-500 border-b-2 border-yellow-500" : "text-gray-400"}`}>Ayarlar</button>
-        <button onClick={() => setActiveAdminTab("Advertising")} className={`px-4 py-2 ${activeAdminTab === "Advertising" ? "text-yellow-500 border-b-2 border-yellow-500" : "text-gray-400"}`}>Reklam Yönetimi</button>
+        {userData?.username === 'astral1' && (
+          <button onClick={() => setActiveAdminTab("Advertising")} className={`px-4 py-2 ${activeAdminTab === "Advertising" ? "text-yellow-500 border-b-2 border-yellow-500" : "text-gray-400"}`}>Reklam Yönetimi</button>
+        )}
       </div>
 
       {activeAdminTab === "Profile" && (
@@ -323,10 +325,10 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
         </div>
       )}
 
-      {activeAdminTab === "Advertising" && (
+      {activeAdminTab === "Advertising" && userData?.username === 'astral1' && (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-8">
           <div className="flex justify-between items-center border-b border-gray-700 pb-4">
-            <h3 className="text-white font-bold text-lg">Gelişmiş Reklam Ayarları</h3>
+            <h3 className="text-white font-bold text-lg">Gelişmiş Reklam Ayarları (SADECE ASTRAL1)</h3>
             <div className="flex gap-4">
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input type="checkbox" checked={adSettings.visibility.top} onChange={() => toggleVisibility('top')} className="w-4 h-4 accent-yellow-500" />
@@ -370,7 +372,7 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
                 </div>
               </div>
               <div className="overflow-y-auto max-h-[160px] space-y-2 custom-scrollbar pr-2">
-                {adSettings.topAds.map(ad => (
+                {adSettings.topAds?.map(ad => (
                   <div key={ad.id} className="flex items-center gap-3 bg-gray-800 p-2 rounded border border-gray-700 group">
                     <img src={ad.image} className="w-12 h-8 object-cover rounded" alt="ad" />
                     <div className="flex-1 min-w-0">
@@ -391,15 +393,15 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
             <div className="space-y-3">
               <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-widest">Sol Dikey Reklam</h4>
               <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 space-y-3">
-                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (.jpg, .png)" value={adSettings.leftAd.image} onChange={e => updateAdSettings({ leftAd: { ...adSettings.leftAd, image: e.target.value } })} />
-                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Link" value={adSettings.leftAd.link} onChange={e => updateAdSettings({ leftAd: { ...adSettings.leftAd, link: e.target.value } })} />
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (.jpg, .png)" value={adSettings.leftAd?.image || ''} onChange={e => updateAdSettings({ leftAd: { ...adSettings.leftAd, image: e.target.value } })} />
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Link" value={adSettings.leftAd?.link || ''} onChange={e => updateAdSettings({ leftAd: { ...adSettings.leftAd, link: e.target.value } })} />
               </div>
             </div>
             <div className="space-y-3">
               <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-widest">Sağ Dikey Reklam</h4>
               <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 space-y-3">
-                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (.jpg, .png)" value={adSettings.rightAd.image} onChange={e => updateAdSettings({ rightAd: { ...adSettings.rightAd, image: e.target.value } })} />
-                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Link" value={adSettings.rightAd.link} onChange={e => updateAdSettings({ rightAd: { ...adSettings.rightAd, link: e.target.value } })} />
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (.jpg, .png)" value={adSettings.rightAd?.image || ''} onChange={e => updateAdSettings({ rightAd: { ...adSettings.rightAd, image: e.target.value } })} />
+                <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Link" value={adSettings.rightAd?.link || ''} onChange={e => updateAdSettings({ rightAd: { ...adSettings.rightAd, link: e.target.value } })} />
               </div>
             </div>
           </div>
@@ -408,15 +410,15 @@ const AdminPage = ({ userData, uid, showNotification, checkRateLimit, refreshFri
           <div className="space-y-3">
             <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-widest">Yan Menü (Sidebar) Reklamı</h4>
             <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (.jpg, .png)" value={adSettings.sidebarAd?.image} onChange={e => updateAdSettings({ sidebarAd: { ...adSettings.sidebarAd, image: e.target.value } })} />
-              <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Link" value={adSettings.sidebarAd?.link} onChange={e => updateAdSettings({ sidebarAd: { ...adSettings.sidebarAd, link: e.target.value } })} />
+              <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Görsel URL (.jpg, .png)" value={adSettings.sidebarAd?.image || ''} onChange={e => updateAdSettings({ sidebarAd: { ...adSettings.sidebarAd, image: e.target.value } })} />
+              <input className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-sm" placeholder="Link" value={adSettings.sidebarAd?.link || ''} onChange={e => updateAdSettings({ sidebarAd: { ...adSettings.sidebarAd, link: e.target.value } })} />
             </div>
           </div>
           
           <div className="p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
             <p className="text-yellow-500 text-xs flex gap-2 items-start leading-relaxed">
               <AlertCircle size={16} className="shrink-0 mt-0.5" />
-              Tüm ayarlar tarayıcınıza otomatik olarak kaydedilir. "Aktif" kutucuklarını işaretleyerek reklam alanlarını istediğiniz zaman gizleyebilir veya gösterebilirsiniz.
+              Tüm ayarlanmalar sunucu veritabanına otomatik kaydedilir ve tüm hesaplarda eşzamanlı güncellenir.
             </p>
           </div>
         </div>

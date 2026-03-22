@@ -69,6 +69,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/users', require('./routes/userRoutes'));
 const { ensureUsersTable } = require('./controllers/userController');
 app.use('/api/discord', require('./routes/discord'));
+app.use('/api/settings', require('./routes/settings'));
 
 // Test route
 app.get('/api/test', (req, res) => {
@@ -91,6 +92,10 @@ server.listen(PORT, async () => {
     // Initialize schema
     await ensureUsersTable();
     console.log('✓ Veritabanı şeması doğrulandı');
+
+    // Ayarlar sekmesini dogrulat ve defaults yukle (YENI)
+    const { ensureSettingsTable } = require('./controllers/settingsController');
+    await ensureSettingsTable();
 
     // Initialize event schema
     if (typeof EventController.ensureSchema === 'function') {

@@ -225,7 +225,27 @@ const getClanMembers = async (req, res) => {
 
     const members = membersResult.rows;
 
-    // 3. Viewer ve Leader'ın arkadaş listelerini (other_players) çek
+    // 3. Katılım Verilerini Çek (En son 30 run)
+    const runsResult = await pool.query(
+      'SELECT id, run_date FROM clan_boss_runs WHERE clan_id = $1 ORDER BY run_date DESC LIMIT 30',
+      [clanId]
+    );
+    const lastRuns = runsResult.rows;
+
+    let runParticipantsMap = {};
+    if (lastRuns.length > 0) {
+      const runIds = lastRuns.map(r => r.id);
+      const participantsResult = await pool.query(
+        'SELECT run_id, user_id FROM clan_boss_participants WHERE run_id = ANY($1)',
+        [runIds]
+      );
+      participantsResult.rows.forEach(p => {
+        if (!runParticipantsMap[p.run_id]) runParticipantsMap[p.run_id] = new Set();
+        runParticipantsMap[p.run_id].add(p.user_id);
+      });
+    }
+
+    // 4. Viewer ve Leader'ın arkadaş listelerini (other_players) çek
     let viewerFriends = {};
     let leaderFriends = {};
 
@@ -252,36 +272,57 @@ const getClanMembers = async (req, res) => {
       if (f && f.uid && f.nickname) leaderNicknames[f.uid] = f.nickname;
     });
 
-    // 4. Her üye için isim çözümleme yap ve profil verilerini çıkar
+    // 5. Her üye için isim çözümleme ve katılım istatistikleri hesaplama
+    const now = new Date();
     const resolvedMembers = members.map(member => {
       let resolvedNickname = '';
 
-      // Kural 1: Kendisi mi? -> mainCharacter
+      // Nickname Çözümleme
       if (member.user_id === viewerId) {
         resolvedNickname = member.char_name || member.username;
-      }
-      // Kural 2: Viewer'ın arkadaş listesinde var mı?
-      else if (viewerNicknames[member.user_id]) {
+      } else if (viewerNicknames[member.user_id]) {
         resolvedNickname = viewerNicknames[member.user_id];
-      }
-      // Kural 3: Liderin arkadaş listesinde var mı?
-      else if (leaderNicknames[member.user_id]) {
+      } else if (leaderNicknames[member.user_id]) {
         resolvedNickname = leaderNicknames[member.user_id];
-      }
-      // Kural 4: Kendi mainCharacter'ı
-      else {
+      } else {
         resolvedNickname = member.char_name || member.username;
+      }
+
+      // Katılım İstatistikleri Hesaplama
+      let consecutiveMissed = 0;
+      let lastRunDate = null;
+      let foundLast = false;
+
+      for (const run of lastRuns) {
+        // Sadece üye klandayken yapılan runları say
+        if (new Date(run.run_date) < new Date(member.joined_at)) continue;
+
+        const participated = runParticipantsMap[run.id]?.has(member.user_id);
+        if (participated) {
+          if (!foundLast) {
+            lastRunDate = run.run_date;
+            foundLast = true;
+          }
+          break; // Üst üste kaçırdığı run sayısını bulduğumuz için duruyoruz
+        } else {
+          consecutiveMissed++;
+        }
       }
 
       const profileData = member.user_profile || {};
 
       return {
         ...member,
-        display_name: member.char_name || member.username, // UI için display_name
-        nickname: resolvedNickname, // Öncelikli gösterilecek isim
+        display_name: member.char_name || member.username,
+        nickname: resolvedNickname,
         characterClass: profileData.characterClass,
         level: profileData.level,
-        awakening: profileData.awakening
+        awakening: profileData.awakening,
+        participation_stats: {
+          consecutive_missed_runs: consecutiveMissed,
+          last_run_date: lastRunDate,
+          days_since_last_run: lastRunDate ? Math.floor((now - new Date(lastRunDate)) / (1000 * 60 * 60 * 24)) : null
+        }
       };
     });
 

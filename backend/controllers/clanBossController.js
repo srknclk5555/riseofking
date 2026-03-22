@@ -550,10 +550,28 @@ const getClanBossRuns = async (req, res) => {
                     u.username as creator_username, u."mainCharacter" as creator_main_character,
                     (SELECT COUNT(*) FROM clan_boss_participants p WHERE p.run_id::text = r.id::text AND p.left_at IS NULL) as participant_count,
                     (SELECT COUNT(*) FROM clan_boss_participants p WHERE p.run_id::text = r.id::text AND p.is_paid = true AND p.left_at IS NULL) as paid_count,
+                    (SELECT COUNT(*) FROM clan_boss_participants p WHERE p.run_id::text = r.id::text AND p.left_at IS NULL AND p.user_id = $2) as am_i_participant,
                     (SELECT COUNT(*) FROM clan_boss_drops d WHERE d.run_id::text = r.id::text) as drop_count,
                     (SELECT COALESCE(SUM(sale_amount), 0) FROM clan_bank_sold s WHERE s.run_id::text = r.id::text) as total_sold_amount,
                     (SELECT COALESCE(SUM(amount), 0) FROM clan_payments cp WHERE cp.run_id::text = r.id::text) as total_paid_amount,
                     (SELECT COALESCE(SUM(ABS(amount)), 0) FROM clan_bank_transactions t WHERE t.related_run_id::text = r.id::text AND t.transaction_type IN ('debt_payment', 'tax_transfer')) as total_treasury_amount,
+
+                    (
+                        SELECT json_agg(json_build_object(
+                            'user_id', p_inner.user_id,
+                            'paid_amount', (SELECT COALESCE(SUM(amount), 0) FROM clan_payments cp WHERE cp.run_id::text = p_inner.run_id::text AND cp.user_id = p_inner.user_id),
+                            'username', u_p.username,
+                            'nickname', COALESCE(
+                                (SELECT x.nickname FROM users u2, jsonb_to_recordset(CASE WHEN jsonb_typeof(u2.other_players) = 'array' THEN u2.other_players ELSE '[]'::jsonb END) as x(uid text, nickname text) 
+                                 WHERE u2.uid = $2 AND x.uid = p_inner.user_id),
+                                u_p."mainCharacter",
+                                u_p.username
+                            )
+                        ))
+                        FROM clan_boss_participants p_inner
+                        JOIN users u_p ON p_inner.user_id = u_p.uid
+                        WHERE p_inner.run_id::text = r.id::text AND p_inner.left_at IS NULL
+                    ) as participants,
 
                     (
                         SELECT json_agg(json_build_object(
@@ -571,8 +589,8 @@ const getClanBossRuns = async (req, res) => {
              JOIN users u ON r.created_by = u.uid
              WHERE r.clan_id = $1`;
 
-        const queryParams = [clanId];
-        let paramIndex = 2;
+        const queryParams = [clanId, userId];
+        let paramIndex = 3;
 
         // Statü filtresi
         if (status === 'open' || status === 'closed') {

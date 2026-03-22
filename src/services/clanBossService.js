@@ -1,9 +1,12 @@
 import { API_BASE } from './apiConfig';
 
 const clanBossService = {
-    getClanBossRuns: async (clanId) => {
+    getClanBossRuns: async (clanId, params = {}) => {
         const token = localStorage.getItem('token');
-        const response = await fetch(`${API_BASE}/clan-boss/runs/clan/${clanId}`, {
+        const queryParams = new URLSearchParams(params).toString();
+        const url = `${API_BASE}/clan-boss/runs/clan/${clanId}${queryParams ? `?${queryParams}` : ''}`;
+        
+        const response = await fetch(url, {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'

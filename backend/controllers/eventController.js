@@ -46,7 +46,8 @@ class EventController {
         { code: 'INFERNO_TEMPLE', name: 'Inferno Temple' },
         { code: 'CRYSTAL_FORTRESS_WAR', name: 'Crystal Fortress War' },
         { code: 'DEATH_MATCH', name: 'Death Match' },
-        { code: 'MOUNT_RACE', name: 'Mount Race' }
+        { code: 'MOUNT_RACE', name: 'Mount Race' },
+        { code: 'DV_GOREV', name: 'DV Görev' }
       ];
 
       for (const { code, name } of eventTypes) {

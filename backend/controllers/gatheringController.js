@@ -173,6 +173,196 @@ class GatheringController {
       res.status(500).json({ error: 'Internal server error' });
     }
   }
+
+  // Rapor özeti: toplam kâr + süre + verimlilik
+  static async getReportSummary(req, res) {
+    try {
+      const { userId } = req.params;
+      const { from, to, profession } = req.query;
+
+      if (!from || !to) {
+        return res.status(400).json({ error: 'from ve to tarihleri zorunludur.' });
+      }
+
+      const params = [userId, from, to];
+      let filterProfession = '';
+
+      if (profession && profession !== 'ALL') {
+        filterProfession = ' AND profession = $4';
+        params.push(profession);
+      }
+
+      const result = await pool.query(
+        `
+        WITH profits AS (
+          SELECT
+            profession,
+            COALESCE(SUM(count * price), 0)::numeric AS total_profit
+          FROM gathering_logs
+          WHERE user_id = $1
+            AND date BETWEEN $2 AND $3
+            AND item_name <> '__duration__'
+            ${filterProfession}
+          GROUP BY profession
+        ),
+        durations AS (
+          SELECT
+            profession,
+            COALESCE(SUM(duration), 0)::int AS total_duration_minutes
+          FROM gathering_logs
+          WHERE user_id = $1
+            AND date BETWEEN $2 AND $3
+            AND item_name = '__duration__'
+            ${filterProfession}
+          GROUP BY profession
+        )
+        SELECT
+          p.profession,
+          COALESCE(p.total_profit, 0) AS total_profit,
+          COALESCE(d.total_duration_minutes, 0) AS total_duration_minutes,
+          CASE WHEN COALESCE(d.total_duration_minutes, 0) > 0
+            THEN ROUND((COALESCE(p.total_profit,0)::numeric) / (COALESCE(d.total_duration_minutes,0)::numeric / 60.0), 2)
+            ELSE NULL
+          END AS gold_per_hour
+        FROM profits p
+        FULL OUTER JOIN durations d ON d.profession = p.profession
+        ORDER BY p.profession;
+      `,
+        params
+      );
+
+      const totals = result.rows.reduce(
+        (acc, row) => {
+          acc.total_profit += Number(row.total_profit || 0);
+          acc.total_duration_minutes += Number(row.total_duration_minutes || 0);
+          return acc;
+        },
+        { total_profit: 0, total_duration_minutes: 0 }
+      );
+
+      const overallGoldPerHour =
+        totals.total_duration_minutes > 0
+          ? Math.round((totals.total_profit / (totals.total_duration_minutes / 60)) * 100) / 100
+          : null;
+
+      res.json({
+        range: { from, to },
+        totals: { ...totals, gold_per_hour: overallGoldPerHour },
+        byProfession: result.rows
+      });
+    } catch (error) {
+      console.error('Gathering report summary error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  // Günlük toplam kâr zaman serisi
+  static async getProfitTimeSeries(req, res) {
+    try {
+      const { userId } = req.params;
+      const { from, to, profession } = req.query;
+
+      if (!from || !to) {
+        return res.status(400).json({ error: 'from ve to tarihleri zorunludur.' });
+      }
+
+      const params = [userId, from, to];
+      let filterProfession = '';
+
+      if (profession && profession !== 'ALL') {
+        filterProfession = ' AND profession = $4';
+        params.push(profession);
+      }
+
+      const result = await pool.query(
+        `
+        SELECT
+          date::date AS date,
+          COALESCE(SUM(count * price), 0)::numeric AS total_profit
+        FROM gathering_logs
+        WHERE user_id = $1
+          AND date BETWEEN $2 AND $3
+          AND item_name <> '__duration__'
+          ${filterProfession}
+        GROUP BY date
+        ORDER BY date;
+      `,
+        params
+      );
+
+      res.json(result.rows);
+    } catch (error) {
+      console.error('Gathering profit timeseries error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  // Günlük breakdown
+  static async getDailyBreakdown(req, res) {
+    try {
+      const { userId } = req.params;
+      const { from, to, profession } = req.query;
+
+      if (!from || !to) {
+        return res.status(400).json({ error: 'from ve to tarihleri zorunludur.' });
+      }
+
+      const params = [userId, from, to];
+      let filterProfession = '';
+
+      if (profession && profession !== 'ALL') {
+        filterProfession = ' AND profession = $4';
+        params.push(profession);
+      }
+
+      const result = await pool.query(
+        `
+        WITH profits AS (
+          SELECT
+            date::date AS date,
+            profession,
+            COALESCE(SUM(count * price), 0)::numeric AS total_profit
+          FROM gathering_logs
+          WHERE user_id = $1
+            AND date BETWEEN $2 AND $3
+            AND item_name <> '__duration__'
+            ${filterProfession}
+          GROUP BY date, profession
+        ),
+        durations AS (
+          SELECT
+            date::date AS date,
+            profession,
+            COALESCE(SUM(duration), 0)::int AS total_duration_minutes
+          FROM gathering_logs
+          WHERE user_id = $1
+            AND date BETWEEN $2 AND $3
+            AND item_name = '__duration__'
+            ${filterProfession}
+          GROUP BY date, profession
+        )
+        SELECT
+          p.date,
+          p.profession,
+          COALESCE(p.total_profit, 0) AS total_profit,
+          COALESCE(d.total_duration_minutes, 0) AS total_duration_minutes,
+          CASE WHEN COALESCE(d.total_duration_minutes, 0) > 0
+            THEN ROUND((COALESCE(p.total_profit,0)::numeric) / (COALESCE(d.total_duration_minutes,0)::numeric / 60.0), 2)
+            ELSE NULL
+          END AS gold_per_hour
+        FROM profits p
+        LEFT JOIN durations d ON d.date = p.date AND d.profession = p.profession
+        ORDER BY p.date DESC, p.profession;
+      `,
+        params
+      );
+
+      res.json(result.rows);
+    } catch (error) {
+      console.error('Gathering daily breakdown error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
 }
 
 module.exports = GatheringController;

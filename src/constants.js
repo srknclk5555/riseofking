@@ -19,6 +19,7 @@ export const EVENTS = {
   "Blood Valley": ["Royal Chest", "Elite Chest"],
   "Sevenfold": ["Soulstone of Oakenna", "Soulstone of Slythera", "Soulstone of Aqualon", "Soulstone of Nightwatcher", "Soulstone of Nysira", "Soulstone of Kalemor", "Soulstone of Lightwarden"],
   "Random Rewards": ["Celestial Chest", "Golden Jade Chest", "Royal Chest", "Gold Chest"],
+  "DV Görev": ["Celestial Chest", "Jade Chest", "Nyra Boost Chest", "Arcana", "Lucky Charm", "Rune Chest"],
   "Lucky Draw": [] 
 };
 

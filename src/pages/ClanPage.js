@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Crown, Users, Plus, X, Search, Sword, Database, MessageSquare, AlertCircle, ArrowRight, UserPlus, Calendar, Coins, UserCheck, Tag, TrendingUp, BarChart2, PieChart as PieIcon, Wallet, UserMinus, Shield, Flame, TrendingDown } from 'lucide-react';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { Crown, Users, Plus, X, Search, Sword, Database, MessageSquare, AlertCircle, ArrowRight, UserPlus, Calendar, Coins, UserCheck, Tag, TrendingUp, BarChart2, PieChart as PieIcon, Wallet, UserMinus, Shield, Flame, TrendingDown, Download, Clock } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
@@ -183,6 +185,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [deleteError, setDeleteError] = useState(null);
   const [runToDelete, setRunToDelete] = useState(null);
   const [soldItemsView, setSoldItemsView] = useState('grid'); // 'list' or 'grid'
+  const [soldItemsFilter, setSoldItemsFilter] = useState('all'); // 'all', 'degerli', 'silver', 'gold'
   const [showManualItemModal, setShowManualItemModal] = useState(false);
   const queryClient = useQueryClient();
 
@@ -260,6 +263,13 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [isProcessingTreasury, setIsProcessingTreasury] = useState(false);
   const [debtWarningModal, setDebtWarningModal] = useState({ open: false, type: 'warning', title: '', message: '', onConfirm: null });
 
+  // Treasury Spend States
+  const [showTreasurySpendModal, setShowTreasurySpendModal] = useState(false);
+  const [treasurySpendAmount, setTreasurySpendAmount] = useState('');
+  const [treasurySpendCategory, setTreasurySpendCategory] = useState('Diğer');
+  const [treasurySpendDescription, setTreasurySpendDescription] = useState('');
+  const [treasurySpendTab, setTreasurySpendTab] = useState('spend');
+
   // New Search States
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
   const [participantSearch, setParticipantSearch] = useState('');
@@ -268,6 +278,13 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [acpDateFilterType, setAcpDateFilterType] = useState('all'); // all, today, week, range
   const [acpStartDate, setAcpStartDate] = useState('');
   const [acpEndDate, setAcpEndDate] = useState('');
+
+  // Role check memo
+  const isLeader = useMemo(() => {
+    return selectedClan?.owner_id === uid || 
+           clanMembers.find(m => m.user_id === uid)?.role === 'leader' || 
+           userData?.role === 'owner';
+  }, [selectedClan?.owner_id, clanMembers, uid, userData?.role]);
 
   // Helper: İtem ismine göre ikon yolunu oluşturur
   const getItemIcon = (itemName) => {
@@ -336,8 +353,11 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
 
   // 2. Clan Boss Runs Query
   const { data: bossRunsData } = useQuery({
-    queryKey: ['bossRuns', selectedClan?.id],
-    queryFn: () => clanBossService.getClanBossRuns(selectedClan.id),
+    queryKey: ['bossRuns', selectedClan?.id, activeTab === 'reports' ? 'all' : 'open'],
+    queryFn: () => clanBossService.getClanBossRuns(
+      selectedClan.id, 
+      activeTab === 'reports' ? { status: 'all' } : { status: 'open' }
+    ),
     enabled: !!selectedClan?.id && (activeTab === 'boss' || activeTab === 'members' || activeTab === 'reports'),
     staleTime: 30 * 1000,
   });
@@ -383,7 +403,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const { data: transactionsQueryData } = useQuery({
     queryKey: ['clanTransactions', selectedClan?.id],
     queryFn: () => clanBankService.getTransactions(selectedClan.id),
-    enabled: !!selectedClan?.id && activeTab === 'bank',
+    enabled: !!selectedClan?.id && (activeTab === 'bank' || activeTab === 'reports' || activeTab === 'members'),
     staleTime: 30 * 1000,
   });
 
@@ -427,6 +447,18 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   useEffect(() => {
     if (soldItemsQueryData) setSoldItems(soldItemsQueryData);
   }, [soldItemsQueryData]);
+
+  const filteredSoldItems = useMemo(() => {
+    if (!soldItems) return [];
+    return soldItems.filter(item => {
+      const itemName = item.item_name.toLowerCase();
+      if (soldItemsFilter === 'all') return true;
+      if (soldItemsFilter === 'silver') return itemName === 'silver bar';
+      if (soldItemsFilter === 'gold') return itemName === 'golden bar';
+      if (soldItemsFilter === 'degerli') return itemName !== 'silver bar' && itemName !== 'golden bar';
+      return true;
+    });
+  }, [soldItems, soldItemsFilter]);
 
 
   // ACP State
@@ -1185,9 +1217,13 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
         dropId: dropId
       });
 
-      const message = actionType === 'send_to_tax' ? 'Tax başarıyla gönderildi.' : 'Borç ödemesi başarıyla gerçekleştirildi.';
+      const message = 
+        actionType === 'send_to_tax' ? 'Tax başarıyla gönderildi.' : 
+        actionType === 'treasury_spend' ? 'Harcama başarıyla kaydedildi.' :
+        'Borç ödemesi başarıyla gerçekleştirildi.';
+      
       showNotification(message, 'success');
-
+      
       fetchClanBank();
       fetchTransactions();
 
@@ -1199,9 +1235,49 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
 
       return true;
     } catch (error) {
-      // Kullanıcı dostu hata mesajını göster
       showNotification(error.message || 'İşlem başarısız.', 'error');
       return false;
+    } finally {
+      setIsProcessingTreasury(false);
+    }
+  };
+
+  const handleProcessTreasurySpend = async () => {
+    if (!treasurySpendAmount || isProcessingTreasury) return;
+    
+    const amount = parseFloat(treasurySpendAmount);
+    if (isNaN(amount) || amount <= 0) {
+      showNotification('Lütfen geçerli bir tutar girin.', 'error');
+      return;
+    }
+
+    if (amount > clanTax) {
+      showNotification(`Yetersiz hazine bakiyesi. Mevcut: ${clanTax.toLocaleString('tr-TR')} G`, 'error');
+      return;
+    }
+
+    setIsProcessingTreasury(true);
+    try {
+      const fullDescription = `[${treasurySpendCategory}] ${treasurySpendDescription || 'Açıklama yok'}`;
+      await clanBankService.processTreasuryAction(selectedClan.id, {
+        actionType: 'treasury_spend',
+        amount: amount,
+        description: fullDescription
+      });
+
+      showNotification('Harcama başarıyla kaydedildi.', 'success');
+      
+      // Reset form and close modal
+      setTreasurySpendAmount('');
+      setTreasurySpendCategory('Diğer');
+      setTreasurySpendDescription('');
+      setShowTreasurySpendModal(false);
+      
+      // Refresh data
+      queryClient.invalidateQueries({ queryKey: ['clanBank', selectedClan.id] });
+      queryClient.invalidateQueries({ queryKey: ['clanTransactions', selectedClan.id] });
+    } catch (error) {
+      showNotification(error.message || 'Harcama kaydedilemedi.', 'error');
     } finally {
       setIsProcessingTreasury(false);
     }
@@ -1568,16 +1644,38 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     // 1. Data Calculation
     const totalRevenue = (clanBossRuns || []).reduce((sum, run) => sum + parseFloat(run.total_sold_amount || 0), 0);
     const totalPaid = (clanBossRuns || []).reduce((sum, run) => sum + parseFloat(run.total_paid_amount || 0), 0);
+    
+    // İşlem Geçmişinden Gerçekleşen Tax ve Borç Ödemelerini Çek (Transactional Reporting)
+    const totalTaxTransferred = (transactions || [])
+      .filter(t => t.transaction_type === 'tax_transfer')
+      .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount || 0)), 0);
+    
+    const totalDebtPaid = (transactions || [])
+      .filter(t => t.transaction_type === 'debt_payment')
+      .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount || 0)), 0);
+
+    const totalTreasuryDeductions = totalTaxTransferred + totalDebtPaid;
 
     const memberStats = {};
     (clanBossRuns || []).forEach(run => {
       const participants = run.participants || [];
       const runRevenue = parseFloat(run.total_sold_amount || 0);
-      const sharePerPerson = participants.length > 0 ? Math.floor(runRevenue / participants.length) : 0;
+      const totalTreasury = parseFloat(run.total_treasury_amount || 0);
+      const netRevenue = Math.max(0, runRevenue - totalTreasury);
+      const sharePerPerson = participants.length > 0 ? Math.floor(netRevenue / participants.length) : 0;
 
       participants.forEach(p => {
         if (!memberStats[p.user_id]) {
-          memberStats[p.user_id] = { id: p.user_id, name: p.nickname || p.main_character || p.username, runs: 0, earnings: 0, expected: 0 };
+          const memberObj = clanMembers.find(m => m.user_id === p.user_id);
+          memberStats[p.user_id] = { 
+            id: p.user_id, 
+            name: memberObj?.nickname || p.nickname || p.username || 'Bilinmeyen', 
+            runs: 0, 
+            earnings: 0, 
+            expected: 0,
+            acp: memberObj?.total_acp || 0,
+            score: memberObj?.participation_score || 0
+          };
         }
         memberStats[p.user_id].runs += 1;
         memberStats[p.user_id].earnings += parseFloat(p.paid_amount || 0);
@@ -1585,10 +1683,25 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       });
     });
 
-    const totalPending = Object.values(memberStats).reduce((sum, s) => sum + Math.max(0, s.expected - s.earnings), 0);
-    const topParticipants = Object.values(memberStats).sort((a, b) => b.runs - a.runs).slice(0, 5);
-    const topEarners = Object.values(memberStats).sort((a, b) => b.earnings - a.earnings).slice(0, 5);
-    const avgContribution = clanMembers.length > 0 ? totalRevenue / clanMembers.length : 0;
+    const totalCalculatedPending = Math.max(0, totalRevenue - totalPaid - totalTaxTransferred - totalDebtPaid);
+    
+    // Üye bazlı alacakları, toplam kullanılabilir bakiyeye (totalCalculatedPending) göre oranla.
+    // Bu, "Klan Bakiyesi = Toplam Alacaklar" eşitliğini sağlar.
+    const totalExpectedGross = Object.values(memberStats).reduce((sum, s) => sum + s.expected, 0);
+    const payoutRatio = totalExpectedGross > 0 ? (totalRevenue - totalTaxTransferred - totalDebtPaid) / totalExpectedGross : 0;
+
+    const totalPending = totalCalculatedPending;
+    const topParticipants = Object.values(memberStats).filter(s => s.runs > 0).sort((a, b) => b.runs - a.runs).slice(0, 5);
+    const topEarners = Object.values(memberStats).filter(s => s.earnings > 0).sort((a, b) => b.earnings - a.earnings).slice(0, 5);
+    
+    // Ortalama Katkı: Toplam Brüt Gelir / Toplam Katılım Sayısı
+    const totalParticipationCount = (clanBossRuns || []).reduce((sum, run) => sum + (run.participants?.length || 0), 0);
+    const avgContribution = totalParticipationCount > 0 ? totalRevenue / totalParticipationCount : 0;
+
+    // memberStats içindeki receivables'ı net payoutRatio ile güncelle (Liste gösterimi için)
+    Object.values(memberStats).forEach(s => {
+      s.netReceivable = Math.max(0, (s.expected * payoutRatio) - s.earnings);
+    });
 
     // Drop Stats
     const itemStats = {};
@@ -1715,45 +1828,65 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-xl group hover:border-emerald-500/30 transition-all">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl group hover:border-emerald-500/30 transition-all">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 bg-emerald-600/20 rounded-lg flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
-                <Wallet size={18} />
+              <div className="w-10 h-10 bg-emerald-600/20 rounded-lg flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
+                <Wallet size={20} />
               </div>
-              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Toplam Gelir</span>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Toplam Brüt Gelir</span>
             </div>
-            <div className="text-2xl font-black text-white font-mono">{totalRevenue.toLocaleString('tr-TR')} <span className="text-emerald-500 text-xs">G</span></div>
+            <div className="text-3xl font-black text-white font-mono">{totalRevenue.toLocaleString('tr-TR')} <span className="text-emerald-500 text-sm">G</span></div>
           </div>
 
-          <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-xl group hover:border-blue-500/30 transition-all">
+          <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl group hover:border-blue-500/30 transition-all">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 bg-blue-600/20 rounded-lg flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-                <TrendingUp size={18} />
+              <div className="w-10 h-10 bg-blue-600/20 rounded-lg flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+                <TrendingUp size={20} />
               </div>
-              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Drop Şansı</span>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Efektif Drop Şansı</span>
             </div>
-            <div className="text-2xl font-black text-white font-mono">%{dropChance}</div>
+            <div className="text-3xl font-black text-white font-mono">%{dropChance}</div>
           </div>
 
-          <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-xl group hover:border-indigo-500/30 transition-all">
+          <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl group hover:border-indigo-500/30 transition-all">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 bg-indigo-600/20 rounded-lg flex items-center justify-center text-indigo-500 group-hover:scale-110 transition-transform">
-                <UserCheck size={18} />
+              <div className="w-10 h-10 bg-indigo-600/20 rounded-lg flex items-center justify-center text-indigo-500 group-hover:scale-110 transition-transform">
+                <UserCheck size={20} />
               </div>
-              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Toplam Payout</span>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Toplam Dağıtılan Pay</span>
             </div>
-            <div className="text-2xl font-black text-white font-mono">{totalPaid.toLocaleString('tr-TR')} <span className="text-indigo-500 text-xs">G</span></div>
+            <div className="text-3xl font-black text-white font-mono">{totalPaid.toLocaleString('tr-TR')} <span className="text-indigo-500 text-sm">G</span></div>
           </div>
 
-          <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-xl group hover:border-red-500/30 transition-all">
+          <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl group hover:border-red-500/30 transition-all">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 bg-red-600/20 rounded-lg flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
-                <AlertCircle size={18} />
+              <div className="w-10 h-10 bg-red-600/20 rounded-lg flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
+                <AlertCircle size={20} />
               </div>
-              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Kalan Borç</span>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Kalan Ödeme (Net Alacak)</span>
             </div>
-            <div className="text-2xl font-black text-white font-mono">{totalPending.toLocaleString('tr-TR')} <span className="text-red-500 text-xs">G</span></div>
+            <div className="text-3xl font-black text-white font-mono">{totalPending.toLocaleString('tr-TR')} <span className="text-red-500 text-sm">G</span></div>
+          </div>
+
+          <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl group hover:border-blue-500/30 transition-all">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 bg-blue-600/20 rounded-lg flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                <Database size={20} />
+              </div>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Aktarılan Toplam Tax</span>
+            </div>
+            <div className="text-3xl font-black text-white font-mono">{totalTaxTransferred.toLocaleString('tr-TR')} <span className="text-blue-400 text-sm">G</span></div>
+          </div>
+
+          <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl group hover:border-orange-500/30 transition-all">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 bg-orange-600/20 rounded-lg flex items-center justify-center text-orange-500 group-hover:scale-110 transition-transform">
+                <Flame size={20} />
+              </div>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Ödenen Klan Borcu</span>
+            </div>
+            <div className="text-3xl font-black text-white font-mono">{totalDebtPaid.toLocaleString('tr-TR')} <span className="text-orange-500 text-sm">G</span></div>
           </div>
         </div>
 
@@ -1795,11 +1928,13 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                     <div className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-black text-gray-400">
                       {idx + 1}
                     </div>
-                    <span className="text-white font-bold">{p.name}</span>
+                    <div>
+                      <div className="text-white font-bold leading-none">{p.name}</div>
+                      <div className="text-[10px] text-gray-500 font-bold uppercase mt-1">ACP: <span className="text-purple-400">{p.acp.toLocaleString()}</span> | PUAN: <span className="text-emerald-500">{p.score}</span></div>
+                    </div>
                   </div>
                   <div className="flex items-center gap-4 text-sm">
-                    <span className="text-gray-500 text-xs font-bold uppercase">Ort. Katkı: <span className="text-white">{(p.earnings / (p.runs || 1)).toFixed(0)}</span></span>
-                    <span className="bg-indigo-600/20 text-indigo-400 px-2 py-0.5 rounded text-[10px] font-black uppercase">{p.runs} RUN</span>
+                    <span className="bg-indigo-600/20 text-indigo-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter shadow-sm border border-indigo-500/10">{p.runs} RUN</span>
                   </div>
                 </div>
               )) : (
@@ -1868,6 +2003,211 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     );
   };
 
+  // --- EXCEL EXPORT (EXCELJS) ---
+  const handleExportExcel = async () => {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Rise Online Tracker';
+      workbook.lastModifiedBy = 'Rise Online Tracker';
+      workbook.created = new Date();
+
+      // Yardımcı Format Fonksiyonları (Manuel Nokta Ayracı)
+      const fmt = (num) => {
+        if (num === null || num === undefined) return '0';
+        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+      };
+      const fmtG = (num) => `${fmt(num)} G`;
+
+      // Stil Sabitleri
+      const headerStyle = {
+        font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } },
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        }
+      };
+
+      const cellStyle = {
+        border: {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        },
+        alignment: { vertical: 'middle' }
+      };
+
+      // Alacak hesaplama helper
+      const getReceivable = (memberId) => {
+        let expected = 0;
+        let earnings = 0;
+        (clanBossRuns || []).forEach(run => {
+          const participants = run.participants || [];
+          const p = participants.find(part => part.user_id === memberId);
+          if (p) {
+            const runRevenue = parseFloat(run.total_sold_amount || 0) - parseFloat(run.total_treasury_amount || 0);
+            const sharePerPerson = participants.length > 0 ? Math.floor(Math.max(0, runRevenue) / participants.length) : 0;
+            earnings += parseFloat(p.paid_amount || 0);
+            expected += sharePerPerson;
+          }
+        });
+        return Math.max(0, expected - earnings);
+      };
+
+      // 1. Üye Listesi (Members)
+      const wsMembers = workbook.addWorksheet('Üyeler');
+      wsMembers.columns = [
+        { header: 'Oyun İçi Adı (Nickname)', key: 'nickname', width: 25 },
+        { header: 'Katılımcı Kimliği (Username)', key: 'username', width: 25 },
+        { header: 'Rol', key: 'role', width: 15 },
+        { header: 'Sınıf', key: 'class', width: 15 },
+        { header: 'Seviye', key: 'level', width: 10 },
+        { header: 'Clan Boss Puanı', key: 'score', width: 15 },
+        { header: 'Toplam ACP', key: 'acp', width: 20 },
+        { header: 'Net Alacak Tutarı (G)', key: 'receivable', width: 25 },
+        { header: 'Katılım Tarihi', key: 'joined', width: 20 }
+      ];
+
+      clanMembers.forEach(m => {
+        wsMembers.addRow({
+          nickname: m.nickname || m.username,
+          username: m.username,
+          role: m.role === 'leader' ? 'Leader' : (m.role === 'admin' ? 'Admin' : 'Member'),
+          class: m.characterClass || 'Bilinmiyor',
+          level: formatLevelDisplay(m.level, m.awakening),
+          score: fmt(m.participation_score || 0),
+          acp: fmt(m.total_acp || 0),
+          receivable: fmtG(getReceivable(m.user_id)),
+          joined: new Date(m.joined_at).toLocaleDateString('tr-TR')
+        });
+      });
+
+      // 2. Kasa ve Banka (Treasury & Bank)
+      const wsBank = workbook.addWorksheet('Kasa ve Banka');
+      wsBank.columns = [
+        { header: 'Açıklama / İtem Adı', key: 'col1', width: 35 },
+        { header: 'Değer / Miktar', key: 'col2', width: 20 },
+        { header: 'Tarih', key: 'col3', width: 20 },
+        { header: 'Asıl Sahibi', key: 'col4', width: 20 }
+      ];
+
+      wsBank.addRow(['==== KLAN KASASI ÖZETİ ====', '', '', '']);
+      wsBank.addRow(['Klan Hazinesi (Bakiye)', fmtG(bankData?.balance || 0), '', '']);
+      wsBank.addRow(['Toplam Borç', fmtG(clanDebt || 0), '', '']);
+      wsBank.addRow(['Hazine (Tax)', fmtG(clanTax || 0), '', '']);
+      wsBank.addRow(['Bekleyen Ödemeler', `${fmt(clanBossRuns.reduce((sum, run) => sum + (parseInt(run.participant_count || 0) - parseInt(run.paid_count || 0)), 0))} Kişi`, '', '']);
+      wsBank.addRow([]);
+      wsBank.addRow(['==== BANKA İTEMLERİ ====', '', '', '']);
+
+      (bankData?.items || []).forEach(item => {
+        wsBank.addRow({
+          col1: item.item_name,
+          col2: fmt(item.quantity || 0),
+          col3: new Date(item.timestamp).toLocaleDateString('tr-TR'),
+          col4: item.user_id ? `@${item.user_id.substring(0, 8)}...` : '-'
+        });
+      });
+
+      // 3 & 4. Run Kayıtları için Helper
+      const addRunsToWorksheet = (title, runs) => {
+        const ws = workbook.addWorksheet(title);
+        ws.columns = [
+          { header: 'Boss Bilgisi / Katılımcı Detayı', key: 'col1', width: 35 },
+          { header: 'Oluşturma Tarihi / Kullanıcı', key: 'col2', width: 25 },
+          { header: 'Durum / Sınıf', key: 'col3', width: 20 },
+          { header: 'Katılımcı / Ödeme', key: 'col4', width: 20 },
+          { header: 'Droplar / Durum', key: 'col5', width: 45 },
+          { header: 'Toplam Gelir (Brüt)', key: 'col6', width: 25 },
+          { header: 'Kesintiler (Tax/Borç)', key: 'col7', width: 25 },
+          { header: 'Net Dağıtılan Pay (Kişi Başı)', key: 'col8', width: 25 }
+        ];
+
+        runs.forEach(r => {
+          const runRevenue = parseFloat(r.total_sold_amount || 0);
+          const totalTreasury = parseFloat(r.total_treasury_amount || 0);
+          const netRevenue = runRevenue - totalTreasury;
+          const participants = r.participants || [];
+          const netShare = participants.length > 0 ? Math.floor(Math.max(0, netRevenue) / participants.length) : 0;
+
+          const runRow = ws.addRow({
+            col1: `[RUN] ${r.boss?.name || r.boss_name || 'Shallow Fever'}`,
+            col2: new Date(r.run_date || r.date || r.created_at).toLocaleDateString('tr-TR'),
+            col3: r.status === 'open' ? 'Aktif' : 'Kapalı',
+            col4: `${participants.length} Katılımcı`,
+            col5: (r.drops || []).map(d => `${fmt(d.quantity)}x ${d.item_name}`).join(' | '),
+            col6: fmtG(runRevenue),
+            col7: fmtG(totalTreasury),
+            col8: fmtG(netShare)
+          });
+          runRow.font = { bold: true };
+
+          if (participants.length > 0) {
+            const subHeader = ws.addRow(['', '-> KATILIMCI ADI (Nickname)', 'OYUN İÇİ KULLANICI ADI (Username)', 'ÖDENEN TUTAR', 'ÖDEME DURUMU', '', '', 'HAK EDİLEN NET PAY']);
+            subHeader.font = { italic: true, bold: true };
+            subHeader.outlineLevel = 1;
+
+            participants.forEach(p => {
+              // Nickname'i klan üyeleri listesinden gerçek/çözülmüş haliyle çek
+              const memberObj = clanMembers.find(m => m.user_id === p.user_id);
+              const resolvedNickname = memberObj?.nickname || p.nickname || p.username || 'Bilinmeyen';
+
+              const pRow = ws.addRow([
+                '',
+                resolvedNickname,
+                p.username || memberObj?.username || '-',
+                fmtG(p.paid_amount || 0),
+                p.is_paid ? 'Ödendi' : 'Bekliyor',
+                '',
+                '',
+                fmtG(netShare)
+              ]);
+              pRow.outlineLevel = 1;
+            });
+          }
+          ws.addRow([]); // Boş satır
+        });
+
+        // Stil Uygula
+        ws.getRow(1).eachCell(cell => { cell.style = headerStyle; });
+        ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+          if (rowNumber > 1) {
+            row.eachCell({ includeEmpty: false }, cell => {
+              if (!cell.style.font) cell.style = cellStyle;
+              else cell.border = cellStyle.border;
+            });
+          }
+        });
+      };
+
+      addRunsToWorksheet('Aktif Runlar', clanBossRuns.filter(r => r.status === 'open'));
+      addRunsToWorksheet('Kapanmış Runlar', clanBossRuns.filter(r => r.status === 'closed'));
+
+      // Üye ve Banka Sayfalarına Stil Uygula
+      [wsMembers, wsBank].forEach(ws => {
+        ws.getRow(1).eachCell(cell => { cell.style = headerStyle; });
+        ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+          if (rowNumber > 1) {
+            row.eachCell({ includeEmpty: false }, cell => {
+              cell.style = cellStyle;
+            });
+          }
+        });
+      });
+
+      // Dosyayı İndir
+      const buffer = await workbook.xlsx.writeBuffer();
+      saveAs(new Blob([buffer]), `${selectedClan?.name || 'Klan'}_Gelismis_Raporu.xlsx`);
+      showNotification('Gelişmiş Excel raporu başarıyla oluşturuldu ve indirildi.', 'success');
+    } catch (error) {
+      console.error('ExcelJS export hatası:', error);
+      showNotification('Excel dosyası oluşturulurken hata meydana geldi.', 'error');
+    }
+  };
+
   // Dashboard / Yönetim Görünümü
   return (
     <div className="min-h-screen bg-gray-900 p-6">
@@ -1889,6 +2229,14 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportExcel}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-bold transition-all shadow-lg hidden sm:flex"
+              title="Klan Raporunu İndir"
+            >
+              <Download size={20} />
+              <span className="hidden md:inline">Excel İndir</span>
+            </button>
             {selectedClan?.owner_id === uid && activeTab === 'members' && (
               <button
                 onClick={() => {
@@ -1985,9 +2333,9 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                     <span className="text-[10px] text-gray-500 uppercase">Seviye</span>
                     <span className="text-yellow-500 font-bold text-xs">LVL 1</span>
                   </div>
-                  <div className="flex flex-col border-l border-gray-700/50 pl-8">
+                   <div className="flex flex-col border-l border-gray-700/50 pl-8">
                     <span className="text-[10px] text-gray-500 uppercase">Klan Bakiyesi</span>
-                    <span className="text-green-500 font-bold font-mono text-xs">0 Gold</span>
+                    <span className="text-green-500 font-bold font-mono text-xs">{Number(bankData.balance || 0).toLocaleString('tr-TR')} Gold</span>
                   </div>
                 </div>
               </div>
@@ -2022,6 +2370,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                         <th className="px-6 py-4 border-b border-gray-700/50">Üye Bilgisi</th>
                         <th className="px-6 py-4 border-b border-gray-700/50">Rol</th>
                         <th className="px-6 py-4 border-b border-gray-700/50">Katılma Tarihi</th>
+                        <th className="px-6 py-4 border-b border-gray-700/50 text-center">Katılım</th>
                         <th className="px-6 py-4 border-b border-gray-700/50 text-center">Puan</th>
                         <th className="px-6 py-4 border-b border-gray-700/50 text-center">Top. ACP</th>
                         <th className="px-6 py-4 border-b border-gray-700/50 text-center text-emerald-500">Alacak</th>
@@ -2070,6 +2419,29 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                               {new Date(member.joined_at).toLocaleDateString()}
                             </td>
                             <td className="px-6 py-4 text-center">
+                              {member.participation_stats?.consecutive_missed_runs > 0 ? (
+                                <div className={`inline-flex flex-col items-center justify-center px-3 py-1.5 rounded-xl border transition-all min-w-[75px] ${
+                                  member.participation_stats.consecutive_missed_runs >= 3 
+                                    ? 'bg-red-600/30 text-red-400 border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.3)] animate-pulse' 
+                                    : 'bg-orange-600/10 text-orange-400 border-orange-500/20'
+                                }`}>
+                                  <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-tighter whitespace-nowrap">
+                                    <AlertCircle size={10} />
+                                    {member.participation_stats.consecutive_missed_runs} Run
+                                  </div>
+                                  <div className="text-[9px] font-bold opacity-60 flex items-center gap-1 whitespace-nowrap">
+                                    <Clock size={8} />
+                                    {member.participation_stats.days_since_last_run || 0} GÜN
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/10 text-emerald-400 rounded-xl text-[10px] font-black uppercase tracking-tighter border border-emerald-500/20">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  Aktif
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-center">
                               <div className="inline-flex items-center justify-center px-2 py-1 bg-blue-900/20 text-blue-400 rounded-lg text-xs font-bold border border-blue-500/10 shadow-sm">
                                 {member.participation_score || 0}
                               </div>
@@ -2081,22 +2453,42 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                             </td>
                             <td className="px-6 py-4 text-center">
                               {(() => {
-                                let expected = 0;
-                                let earnings = 0;
+                                // 1. Global Havuz Hesaplama (Gerçek Likidite)
+                                const totalRevenue = (clanBossRuns || []).reduce((sum, run) => sum + parseFloat(run.total_sold_amount || 0), 0);
+                                const totalTaxTransferred = (transactions || [])
+                                  .filter(t => t.transaction_type === 'tax_transfer')
+                                  .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount || 0)), 0);
+                                const totalDebtPaid = (transactions || [])
+                                  .filter(t => t.transaction_type === 'debt_payment')
+                                  .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount || 0)), 0);
+                                
+                                // Toplam brüt hak edişi bul (Ratio için)
+                                let totalGrossPool = 0;
+                                (clanBossRuns || []).forEach(run => {
+                                  const pCount = run.participants?.length || 0;
+                                  if (pCount > 0) totalGrossPool += parseFloat(run.total_sold_amount || 0);
+                                });
+
+                                const netPool = totalRevenue - totalTaxTransferred - totalDebtPaid;
+                                const payoutRatio = totalGrossPool > 0 ? netPool / totalGrossPool : 0;
+
+                                // 2. Üye Özel Hesaplama
+                                let memberGrossExpected = 0;
+                                let memberEarnings = 0;
                                 (clanBossRuns || []).forEach(run => {
                                   const participants = run.participants || [];
                                   const p = participants.find(part => part.user_id === member.user_id);
                                   if (p) {
-                                    const runRevenue = parseFloat(run.total_sold_amount || 0) - parseFloat(run.total_treasury_amount || 0);
-                                    const sharePerPerson = participants.length > 0 ? Math.floor(Math.max(0, runRevenue) / participants.length) : 0;
-                                    earnings += parseFloat(p.paid_amount || 0);
-                                    expected += sharePerPerson;
+                                    const sharePerPerson = participants.length > 0 ? (parseFloat(run.total_sold_amount || 0) / participants.length) : 0;
+                                    memberEarnings += parseFloat(p.paid_amount || 0);
+                                    memberGrossExpected += sharePerPerson;
                                   }
                                 });
-                                const receivables = Math.max(0, expected - earnings);
+
+                                const receivables = Math.max(0, (memberGrossExpected * payoutRatio) - memberEarnings);
                                 return receivables > 0 ? (
                                   <div className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-900/20 text-emerald-400 rounded-lg text-xs font-bold border border-emerald-500/10 shadow-sm whitespace-nowrap">
-                                    {receivables.toLocaleString('tr-TR')} G
+                                    {Math.floor(receivables).toLocaleString('tr-TR')} G
                                   </div>
                                 ) : (
                                   <div className="text-gray-500 text-xs font-bold">-</div>
@@ -2511,7 +2903,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                 <div className="flex-1">
                   <div className="text-sm text-gray-400 flex justify-between items-center">
                     <span>Hazine (Tax)</span>
-                    {(selectedClan?.owner_id === uid || clanMembers.find(m => m.user_id === uid)?.role === 'leader' || userData?.role === 'owner') && (
+                    {isLeader && (
                       <div className="text-blue-400 p-1">
                         <Plus size={14} />
                       </div>
@@ -2575,22 +2967,32 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                 </div>
 
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowSoldItemsModal(true)}
-                    className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 border border-gray-600 transition-all text-xs font-bold shadow"
-                  >
-                    <Tag className="text-yellow-400" size={14} />
-                    Satılan İtemler
-                  </button>
-                  {(userData?.clanRole === 'leader' || userData?.role === 'owner') && (
                     <button
-                      onClick={() => setShowManualItemModal(true)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 border border-blue-400 transition-all text-xs font-bold shadow"
+                      onClick={() => setShowSoldItemsModal(true)}
+                      className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 border border-gray-600 transition-all text-xs font-bold shadow"
                     >
-                      <Plus size={14} />
-                      Manuel İtem Ekle
+                      <Tag className="text-yellow-400" size={14} />
+                      Satılan İtemler
                     </button>
-                  )}
+                    <button
+                      onClick={() => {
+                        setShowTreasurySpendModal(true);
+                        setTreasurySpendTab(isLeader ? 'spend' : 'log');
+                      }}
+                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 border border-red-500 transition-all text-xs font-bold shadow"
+                    >
+                      <Coins className="text-yellow-400" size={14} />
+                      {isLeader ? 'Hazineden Harca' : 'Hazine Harcamaları'}
+                    </button>
+                    {isLeader && (
+                      <button
+                        onClick={() => setShowManualItemModal(true)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 border border-blue-400 transition-all text-xs font-bold shadow"
+                      >
+                        <Plus size={14} />
+                        Manuel İtem Ekle
+                      </button>
+                    )}
                 </div>
               </div>
 
@@ -4501,6 +4903,32 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                 </div>
 
                 <div className="flex items-center gap-4">
+                  <div className="flex bg-gray-900 p-1 rounded-lg mr-2">
+                    <button
+                      onClick={() => setSoldItemsFilter('all')}
+                      className={`px-3 py-1.5 rounded-md text-[10px] font-black transition uppercase ${soldItemsFilter === 'all' ? 'bg-red-600 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      Tümü
+                    </button>
+                    <button
+                      onClick={() => setSoldItemsFilter('degerli')}
+                      className={`px-3 py-1.5 rounded-md text-[10px] font-black transition uppercase ${soldItemsFilter === 'degerli' ? 'bg-yellow-600 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      Değerli İtemler
+                    </button>
+                    <button
+                      onClick={() => setSoldItemsFilter('silver')}
+                      className={`px-3 py-1.5 rounded-md text-[10px] font-black transition uppercase ${soldItemsFilter === 'silver' ? 'bg-gray-600 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      Silver Bar
+                    </button>
+                    <button
+                      onClick={() => setSoldItemsFilter('gold')}
+                      className={`px-3 py-1.5 rounded-md text-[10px] font-black transition uppercase ${soldItemsFilter === 'gold' ? 'bg-yellow-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      Golden Bar
+                    </button>
+                  </div>
                   <div className="flex bg-gray-900 p-1 rounded-lg">
                     <button
                       onClick={() => setSoldItemsView('list')}
@@ -4525,14 +4953,14 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 bg-gray-900/20">
-                {soldItems.length === 0 ? (
+                {filteredSoldItems.length === 0 ? (
                   <div className="text-center py-20 bg-gray-900/50 rounded-xl border border-dashed border-gray-700">
                     <Tag className="mx-auto mb-4 text-gray-600" size={48} />
                     <p className="text-gray-500 font-bold uppercase tracking-widest">Henüz satılan item bulunamadı</p>
                   </div>
                 ) : soldItemsView === 'grid' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {soldItems.map((item) => (
+                    {filteredSoldItems.map((item) => (
                       <div
                         key={item.id}
                         onClick={async () => {
@@ -4594,7 +5022,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-700/50">
-                        {soldItems.map((item) => (
+                        {filteredSoldItems.map((item) => (
                           <tr
                             key={item.id}
                             className="hover:bg-gray-700/30 transition group cursor-pointer"
@@ -4907,6 +5335,192 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hazine Harcama Modalı */}
+      {showTreasurySpendModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[110] p-4 animate-in fade-in duration-200">
+          <div className="bg-gray-900 w-full max-w-2xl rounded-2xl border border-gray-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center border border-red-500/30">
+                  <Coins size={20} className="text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">Hazine Harcama Yönetimi</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Klan Hazinesi:</span>
+                    <span className="text-[10px] font-black text-yellow-500">{(clanTax || 0).toLocaleString('tr-TR')} G</span>
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowTreasurySpendModal(false)}
+                className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Tabs */}
+            <div className="flex border-b border-gray-800 p-1 bg-gray-900/30">
+              {isLeader && (
+                <button
+                  onClick={() => setTreasurySpendTab('spend')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                    treasurySpendTab === 'spend' 
+                      ? 'bg-red-600 text-white shadow-lg' 
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                  }`}
+                >
+                  <Plus size={14} />
+                  Harcama Yap
+                </button>
+              )}
+              <button
+                onClick={() => setTreasurySpendTab('log')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                  treasurySpendTab === 'log' 
+                    ? 'bg-red-600 text-white shadow-lg' 
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                }`}
+              >
+                <Clock size={14} />
+                Harcama Günlüğü
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {treasurySpendTab === 'spend' ? (
+                <div className="space-y-6">
+                  {/* Harcama Formu */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Harcama Tutarı (G)</label>
+                      <div className="relative group">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-yellow-500 group-focus-within:scale-110 transition-transform">
+                          <Coins size={16} />
+                        </div>
+                        <input
+                          type="number"
+                          value={treasurySpendAmount}
+                          onChange={(e) => setTreasurySpendAmount(e.target.value)}
+                          placeholder="Örn: 1.000.000"
+                          className="w-full bg-gray-800 border border-gray-700 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Kategori</label>
+                      <select
+                        value={treasurySpendCategory}
+                        onChange={(e) => setTreasurySpendCategory(e.target.value)}
+                        className="w-full bg-gray-800 border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all font-bold text-sm"
+                      >
+                        <option value="Diğer">Diğer</option>
+                        <option value="Klan Seviyesi">Klan Seviyesi</option>
+                        <option value="İtem Alımı">İtem Alımı</option>
+                        <option value="Etkinlik Ödülü">Etkinlik Ödülü</option>
+                        <option value="Market">Market</option>
+                        <option value="Bağış">Bağış</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Açıklama</label>
+                    <textarea
+                      value={treasurySpendDescription}
+                      onChange={(e) => setTreasurySpendDescription(e.target.value)}
+                      placeholder="Harcama detaylarını buraya yazın..."
+                      rows={3}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all text-sm"
+                    />
+                  </div>
+
+                  <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-xl">
+                    <p className="text-[11px] text-red-300 leading-relaxed italic">
+                      * Bu işlem yapıldığında belirtilen tutar <strong>Klan Hazinesi (Tax)</strong> bakiyesinden anında düşülecek ve tüm klan üyeleri tarafından "Harcama Günlüğü" sekmesinden izlenebilecektir.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Harcama Günlüğü Listesi */}
+                  {transactions.filter(t => t.transaction_type === 'treasury_spend').length > 0 ? (
+                    <div className="space-y-3">
+                      {transactions
+                        .filter(t => t.transaction_type === 'treasury_spend')
+                        .map((t, idx) => (
+                          <div key={t.id || idx} className="bg-gray-800/50 border border-gray-800 rounded-xl p-4 flex items-center justify-between hover:border-red-500/30 transition-all group">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 group-hover:scale-110 transition-transform">
+                                <TrendingDown size={18} />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold text-white uppercase tracking-tight">
+                                    {t.description?.split('] ')[1] || t.description}
+                                  </span>
+                                  <span className="bg-red-500/10 text-red-400 text-[10px] px-1.5 py-0.5 rounded border border-red-500/20 font-black uppercase">
+                                    {t.description?.match(/\[(.*?)\]/)?.[1] || 'HARCAMA'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase mt-0.5">
+                                  <Clock size={10} />
+                                  <span>{new Date(t.created_at).toLocaleString('tr-TR')}</span>
+                                  <span className="text-gray-700">•</span>
+                                  <span className="text-gray-400 italic">Yapan: {t.performer_name}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-black text-red-400">{parseFloat(t.amount).toLocaleString('tr-TR')} G</div>
+                              <div className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Çıkış İşlemi</div>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="py-12 flex flex-col items-center justify-center text-gray-500 bg-gray-900/20 rounded-2xl border border-dashed border-gray-800">
+                      <AlertCircle size={40} className="mb-3 opacity-20" />
+                      <p className="text-sm font-bold uppercase tracking-widest">Henüz harcama kaydı bulunmuyor</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer (Sadece harcama yaparken) */}
+            {treasurySpendTab === 'spend' && (
+              <div className="p-4 border-t border-gray-800 bg-gray-900/50 flex gap-3">
+                <button
+                  onClick={() => setShowTreasurySpendModal(false)}
+                  className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition text-sm"
+                >
+                  İptal
+                </button>
+                <button
+                  onClick={handleProcessTreasurySpend}
+                  disabled={isProcessingTreasury || !treasurySpendAmount}
+                  className="flex-[2] px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black shadow-lg shadow-red-900/20 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isProcessingTreasury ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Coins size={18} />
+                      HARCAMAYI ONAYLA
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

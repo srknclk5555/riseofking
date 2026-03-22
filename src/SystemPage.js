@@ -105,7 +105,6 @@ const parseExcelValue = (val, type) => {
 };
 
 const SystemPage = ({ userData, uid, showNotification, checkRateLimit }) => {
-  // Admin kontrolü artık Firestore Security Rules ile sağlanmaktadır
   
   const [activeTab, setActiveTab] = useState("Locations");
   
@@ -990,6 +989,17 @@ const SystemPage = ({ userData, uid, showNotification, checkRateLimit }) => {
   };
 
   // Dışa aktarma fonksiyonları
+
+  // Kesin yetki kontrolü (Hook'lardan sonra)
+  if (!userData || userData.username !== 'astral1') {
+    return (
+      <div className="flex-1 p-8 m-8 max-w-2xl mx-auto mt-20 text-center bg-gray-900 border border-red-500/30 rounded-xl shadow-2xl">
+        <h2 className="text-3xl font-bold text-red-500 mb-4 tracking-wider">YETKİSİZ ERİŞİM</h2>
+        <p className="text-gray-400 text-lg">Bu sayfayı ve sistem özelliklerini yalnızca Sistem Yöneticisi görebilir.</p>
+        <p className="text-gray-600 text-sm mt-6 font-mono">Gereken yetki: astral1</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

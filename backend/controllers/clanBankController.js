@@ -191,6 +191,25 @@ const processTreasuryAction = async (req, res) => {
                 INSERT INTO clan_bank_transactions (clan_id, user_id, amount, transaction_type, description, related_run_id)
                 VALUES ($1, $2, $3, 'tax_transfer', $4, $5)
             `, [clanId, userId, -amount, description || 'Klan kasasına aktarım', runId]);
+        } else if (actionType === 'treasury_spend') {
+            // Sadece lider yapabilir (Zaten yukarıda genel kontrol var ama netlik için burada da kalabilir)
+            const currentTax = parseFloat(balanceRes.rows[0]?.clan_tax || 0);
+
+            if (currentTax < amount) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: `Yetersiz hazine bakiyesi. Mevcut: ${currentTax.toLocaleString('tr-TR')} G` });
+            }
+
+            await client.query(`
+                UPDATE clan_balances 
+                SET clan_tax = GREATEST(0, clan_tax - $1), updated_at = CURRENT_TIMESTAMP
+                WHERE clan_id = $2
+            `, [amount, clanId]);
+
+            await client.query(`
+                INSERT INTO clan_bank_transactions (clan_id, user_id, amount, transaction_type, description, related_run_id)
+                VALUES ($1, $2, $3, 'treasury_spend', $4, $5)
+            `, [clanId, userId, -amount, description || 'Hazineden harcama', runId]);
         } else {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: 'Geçersiz işlem tipi.' });

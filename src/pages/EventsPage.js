@@ -29,14 +29,16 @@ const EventsPage = ({ userData, selectedDate, prices, uid }) => {
     'Inferno Temple': 'INFERNO_TEMPLE',
     'Crystal Fortress War': 'CRYSTAL_FORTRESS_WAR',
     'Deathmatch': 'DEATH_MATCH',
-    'Mount Race': 'MOUNT_RACE'
+    'Mount Race': 'MOUNT_RACE',
+    'DV Görev': 'DV_GOREV'
   };
 
   const EVENT_NAME_BY_CODE = {
     INFERNO_TEMPLE: 'Inferno Temple',
     CRYSTAL_FORTRESS_WAR: 'Crystal Fortress War',
     DEATH_MATCH: 'Death Match',
-    MOUNT_RACE: 'Mount Race'
+    MOUNT_RACE: 'Mount Race',
+    DV_GOREV: 'DV Görev'
   };
 
   const PIE_COLORS = ['#a855f7', '#22c55e', '#eab308', '#ef4444', '#38bdf8', '#f97316'];
@@ -522,12 +524,38 @@ const EventsPage = ({ userData, selectedDate, prices, uid }) => {
     return encodeURI(`/ui_icons/${folder}${formattedFileName}.${extension}`);
   };
 
+  // Sekme Gruplandırma
+  const bottomRowKeys = ["Blood Valley", "Sevenfold", "Random Rewards", "DV Görev", "Lucky Draw"];
+  const topRowEvents = Object.keys(EVENTS).filter(e => !bottomRowKeys.includes(e));
+  const bottomRowEvents = Object.keys(EVENTS).filter(e => bottomRowKeys.includes(e));
+
+  const TabButton = ({ name, active, onClick }) => (
+    <button 
+      onClick={onClick} 
+      className={`px-4 py-1.5 whitespace-nowrap rounded-lg transition-all duration-200 text-sm font-medium ${active ? 'bg-purple-600/20 text-purple-400 border border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.15)]' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-300 border border-transparent'}`}
+    >
+      {name}
+    </button>
+  );
+
   return (
     <div className="space-y-6">
-      <div className="flex gap-2 border-b border-gray-700 overflow-x-auto pb-2">
-<button onClick={() => setActiveTab("Genel")} className={`px-4 py-2 whitespace-nowrap ${activeTab === "Genel" ? 'text-purple-400 border-b-2 border-purple-500' : 'text-gray-400'}`}>Genel</button>
-        <button onClick={() => setActiveTab("Raporlar")} className={`px-4 py-2 whitespace-nowrap ${activeTab === "Raporlar" ? 'text-purple-400 border-b-2 border-purple-500' : 'text-gray-400'}`}>Raporlar</button>
-        {Object.keys(EVENTS).map(e => <button key={e} onClick={() => setActiveTab(e)} className={`px-4 py-2 whitespace-nowrap ${activeTab === e ? 'text-purple-400 border-b-2 border-purple-500' : 'text-gray-400'}`}>{e}</button>)}
+      <div className="flex flex-col gap-3 border-b border-gray-700 pb-4">
+        {/* Üst Sıra */}
+        <div className="flex flex-wrap gap-2">
+          <TabButton name="Genel" active={activeTab === "Genel"} onClick={() => setActiveTab("Genel")} />
+          <TabButton name="Raporlar" active={activeTab === "Raporlar"} onClick={() => setActiveTab("Raporlar")} />
+          {topRowEvents.map(e => (
+            <TabButton key={e} name={e} active={activeTab === e} onClick={() => setActiveTab(e)} />
+          ))}
+        </div>
+        
+        {/* Alt Sıra */}
+        <div className="flex flex-wrap gap-2">
+          {bottomRowEvents.map(e => (
+            <TabButton key={e} name={e} active={activeTab === e} onClick={() => setActiveTab(e)} />
+          ))}
+        </div>
       </div>
 
       {/* RAPORLAR SEKME İÇERİĞİ */}
@@ -586,6 +614,7 @@ const EventsPage = ({ userData, selectedDate, prices, uid }) => {
                     <option value="CRYSTAL_FORTRESS_WAR">Crystal Fortress War</option>
                     <option value="DEATH_MATCH">Death Match</option>
                     <option value="MOUNT_RACE">Mount Race</option>
+                    <option value="DV_GOREV">DV Görev</option>
                   </select>
                 </div>
               </div>

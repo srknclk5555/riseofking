@@ -30,7 +30,7 @@ import AdminPage from './pages/AdminPage';
 import ClanPage from './pages/ClanPage';
 
 // PostgreSQL API Servisleri
-import { itemService, locationService, mobService, farmService, notificationService, gatheringService, eventService, messageService, userService } from './services/api';
+import { itemService, locationService, mobService, farmService, notificationService, gatheringService, eventService, messageService, userService, settingsService } from './services/api';
 import * as authService from './services/authService';
 import socketService from './services/socketService';
 
@@ -114,7 +114,13 @@ export default function App() {
   const [tooltipContent, setTooltipContent] = useState({});
   const tooltipRef = useRef(null);
 
-  // Gelişmiş Reklam Ayarları
+  // Gelişmiş Reklam Ayarları (Sunucu Tabanlı)
+  const { data: serverAdSettings } = useQuery({
+    queryKey: ['adSettings'],
+    queryFn: () => settingsService.getAdSettings(),
+    staleTime: 5 * 60 * 1000, // 5 dakika taze kabul et
+  });
+
   const [adSettings, setAdSettings] = useState({
     visibility: {
       top: true,
@@ -123,27 +129,48 @@ export default function App() {
       sidebar: true
     },
     carouselInterval: 4000,
-    topHeight: 80, // Varsayılan yükseklik (px)
-    topAds: [
-      { id: 1, image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2070&auto=format&fit=crop', link: 'https://www.google.com' }
-    ],
-    leftAd: { image: 'https://images.unsplash.com/photo-1614850523296-62c0af475390?q=80&w=2070&auto=format&fit=crop', link: 'https://www.google.com' },
-    rightAd: { image: 'https://images.unsplash.com/photo-1614850523296-62c0af475390?q=80&w=2070&auto=format&fit=crop', link: 'https://www.google.com' },
-    sidebarAd: { image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2070&auto=format&fit=crop', link: 'https://www.google.com' }
+    topHeight: 80,
+    topAds: [],
+    leftAd: {},
+    rightAd: {},
+    sidebarAd: {}
   });
 
-  // LocalStorage'dan gelişmiş reklam ayarlarını yükle
+  // Sunucudan veri geldiğinde lokal kopya state'ini güncelle
   useEffect(() => {
-    const savedSettings = localStorage.getItem('adSettings');
-    if (savedSettings) {
-      setAdSettings(JSON.parse(savedSettings));
+    if (serverAdSettings) {
+      setAdSettings(serverAdSettings);
     }
-  }, []);
+  }, [serverAdSettings]);
 
-  const updateAdSettings = (newSettings) => {
+  // Socket.io ile anlık reklam ayarları güncellemesi (Admin değiştirirse saniyesinde değişir)
+  useEffect(() => {
+    const handleGlobalSettings = (payload) => {
+      if (payload && payload.type === 'adSettings' && payload.data) {
+        setAdSettings(payload.data);
+        queryClient.setQueryData(['adSettings'], payload.data);
+      }
+    };
+
+    socketService.on('GLOBAL_SETTINGS_UPDATED', handleGlobalSettings);
+    return () => {
+      socketService.off('GLOBAL_SETTINGS_UPDATED', handleGlobalSettings);
+    };
+  }, [queryClient]);
+
+  const updateAdSettings = async (newSettings) => {
     const updated = { ...adSettings, ...newSettings };
+    // Hemen UI'ı iyimser güncelleyelim
     setAdSettings(updated);
-    localStorage.setItem('adSettings', JSON.stringify(updated));
+    queryClient.setQueryData(['adSettings'], updated);
+    
+    try {
+      await settingsService.updateAdSettings(updated);
+      showNotification("Ayarlar tüm sunucuda güncellendi.", "success");
+    } catch (error) {
+      console.error("Reklam ayarları kaydedilemedi:", error);
+      showNotification("Reklam ayarları kaydedilemedi! Lütfen yetkili (astral1) olduğunuzdan emin olun.", "error");
+    }
   };
 
   // Dinamik Tooltip Pozisyonlama: Viewport dışına taşmasını engeller
@@ -687,7 +714,9 @@ export default function App() {
               <NavButton icon={<MessageCircle />} label="Mesajlaşma" active={activeTab === "Messaging"} onClick={() => setActiveTab("Messaging")} />
               <NavButton icon={<Crown />} label="Clan" active={activeTab === "Clan"} onClick={() => setActiveTab("Clan")} />
               <NavButton icon={<Settings />} label="Ayarlar" active={activeTab === "Admin"} onClick={() => setActiveTab("Admin")} />
-              <NavButton icon={<MapPin />} label="Sistem" active={activeTab === "System"} onClick={() => setActiveTab("System")} />
+              {userData?.username === 'astral1' && (
+                <NavButton icon={<MapPin />} label="Sistem" active={activeTab === "System"} onClick={() => setActiveTab("System")} />
+              )}
               
               {/* Yan Menü Reklamı */}
               <ManualBanner adConfig={{ ...adSettings.sidebarAd, isActive: adSettings.visibility.sidebar }} />

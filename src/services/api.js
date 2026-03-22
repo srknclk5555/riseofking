@@ -98,7 +98,19 @@ export const gatheringService = {
   updateLog: (id, data) => request(`/gathering/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteLog: (id) => request(`/gathering/${id}`, { method: 'DELETE' }),
   getDuration: (userId, date, prof) => request(`/gathering/user/${userId}/date/${date}/profession/${prof}/duration`),
-  updateDuration: (userId, date, prof, duration) => request(`/gathering/user/${userId}/date/${date}/profession/${prof}/duration`, { method: 'PUT', body: JSON.stringify({ duration }) })
+  updateDuration: (userId, date, prof, duration) => request(`/gathering/user/${userId}/date/${date}/profession/${prof}/duration`, { method: 'PUT', body: JSON.stringify({ duration }) }),
+  getReportSummary: (userId, params) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/gathering/user/${userId}/report/summary${qs ? '?' + qs : ''}`);
+  },
+  getProfitTimeSeries: (userId, params) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/gathering/user/${userId}/report/timeseries/profit${qs ? '?' + qs : ''}`);
+  },
+  getDailyBreakdown: (userId, params) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/gathering/user/${userId}/report/breakdown/daily${qs ? '?' + qs : ''}`);
+  }
 };
 
 // --- MESSAGES SERVİSİ ---
@@ -185,4 +197,10 @@ export const userService = {
 export const discordService = {
   getUserDiscordSettings: (uid) => request(`/discord/settings/${uid}`),
   updateUserDiscordSettings: (data) => request(`/discord/settings/${data.user_id}`, { method: 'PUT', body: JSON.stringify(data) })
+};
+
+// --- SETTINGS SERVİSİ ---
+export const settingsService = {
+  getAdSettings: () => request('/settings/ads'),
+  updateAdSettings: (data) => request('/settings/ads', { method: 'PUT', body: JSON.stringify(data) })
 };

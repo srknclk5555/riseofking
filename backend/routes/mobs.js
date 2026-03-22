@@ -9,13 +9,16 @@ const {
   getMobCount
 } = require('../controllers/mobController');
 
+const authMiddleware = require('../middleware/auth');
+const requireAdmin = require('../middleware/requireAdmin');
+
 // Mob endpoint'leri
 // Sıra önemli: özel rotalar önce, sonra parametreli rotalar
 router.get('/count', getMobCount);
 router.get('/', getAllMobs);
 router.get('/:id', getMobById);
-router.post('/', createMob);
-router.put('/:id', updateMob);
-router.delete('/:id', deleteMob);
+router.post('/', authMiddleware, requireAdmin, createMob);
+router.put('/:id', authMiddleware, requireAdmin, updateMob);
+router.delete('/:id', authMiddleware, requireAdmin, deleteMob);
 
 module.exports = router;

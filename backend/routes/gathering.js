@@ -24,4 +24,9 @@ router.get('/user/:userId/date/:date/profession/:profession/duration', Gathering
 // Profesyon süresini güncelle
 router.put('/user/:userId/date/:date/profession/:profession/duration', GatheringController.updateDuration);
 
+// Raporlar
+router.get('/user/:userId/report/summary', GatheringController.getReportSummary);
+router.get('/user/:userId/report/timeseries/profit', GatheringController.getProfitTimeSeries);
+router.get('/user/:userId/report/breakdown/daily', GatheringController.getDailyBreakdown);
+
 module.exports = router;
