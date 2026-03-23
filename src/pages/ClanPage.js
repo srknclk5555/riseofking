@@ -1117,6 +1117,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       });
       showNotification('Toplu ödeme başarıyla gerçekleştirildi.', 'success');
       setShowBulkPaymentModal(false);
+      // fetchClanBossRuns çağrılmadan Alacak sütunu eski paid_amount ile kalır
+      await fetchClanBossRuns();
       refreshClanMembers();
       fetchClanBank();
       fetchTransactions();
@@ -2453,39 +2455,24 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                             </td>
                             <td className="px-6 py-4 text-center">
                               {(() => {
-                                // 1. Global Havuz Hesaplama (Gerçek Likidite)
-                                const totalRevenue = (clanBossRuns || []).reduce((sum, run) => sum + parseFloat(run.total_sold_amount || 0), 0);
-                                const totalTaxTransferred = (transactions || [])
-                                  .filter(t => t.transaction_type === 'tax_transfer')
-                                  .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount || 0)), 0);
-                                const totalDebtPaid = (transactions || [])
-                                  .filter(t => t.transaction_type === 'debt_payment')
-                                  .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount || 0)), 0);
-                                
-                                // Toplam brüt hak edişi bul (Ratio için)
-                                let totalGrossPool = 0;
-                                (clanBossRuns || []).forEach(run => {
-                                  const pCount = run.participants?.length || 0;
-                                  if (pCount > 0) totalGrossPool += parseFloat(run.total_sold_amount || 0);
-                                });
-
-                                const netPool = totalRevenue - totalTaxTransferred - totalDebtPaid;
-                                const payoutRatio = totalGrossPool > 0 ? netPool / totalGrossPool : 0;
-
-                                // 2. Üye Özel Hesaplama
-                                let memberGrossExpected = 0;
+                                // Backend getMemberPayableRuns ile aynı hesaplama:
+                                // Her run için (satışToplam - hazineKesintisi) / katılımcıSayısı (Math.floor)
+                                let memberNetExpected = 0;
                                 let memberEarnings = 0;
                                 (clanBossRuns || []).forEach(run => {
                                   const participants = run.participants || [];
                                   const p = participants.find(part => part.user_id === member.user_id);
                                   if (p) {
-                                    const sharePerPerson = participants.length > 0 ? (parseFloat(run.total_sold_amount || 0) / participants.length) : 0;
+                                    const runRevenue = parseFloat(run.total_sold_amount || 0);
+                                    const runTreasury = parseFloat(run.total_treasury_amount || 0);
+                                    const netRevenue = Math.max(0, runRevenue - runTreasury);
+                                    const liquidShare = participants.length > 0 ? Math.floor(netRevenue / participants.length) : 0;
                                     memberEarnings += parseFloat(p.paid_amount || 0);
-                                    memberGrossExpected += sharePerPerson;
+                                    memberNetExpected += liquidShare;
                                   }
                                 });
 
-                                const receivables = Math.max(0, (memberGrossExpected * payoutRatio) - memberEarnings);
+                                const receivables = Math.max(0, memberNetExpected - memberEarnings);
                                 return receivables > 0 ? (
                                   <div className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-900/20 text-emerald-400 rounded-lg text-xs font-bold border border-emerald-500/10 shadow-sm whitespace-nowrap">
                                     {Math.floor(receivables).toLocaleString('tr-TR')} G
