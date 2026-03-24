@@ -1647,14 +1647,10 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     const totalRevenue = (clanBossRuns || []).reduce((sum, run) => sum + parseFloat(run.total_sold_amount || 0), 0);
     const totalPaid = (clanBossRuns || []).reduce((sum, run) => sum + parseFloat(run.total_paid_amount || 0), 0);
     
-    // İşlem Geçmişinden Gerçekleşen Tax ve Borç Ödemelerini Çek (Transactional Reporting)
-    const totalTaxTransferred = (transactions || [])
-      .filter(t => t.transaction_type === 'tax_transfer')
-      .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount || 0)), 0);
+    // İşlem Geçmişinden Gerçekleşen Tax ve Borç Ödemelerini Çek (Transactional Reporting) - Backend'den global aggregate
+    const totalTaxTransferred = parseFloat(bankData?.total_tax_transferred || 0);
     
-    const totalDebtPaid = (transactions || [])
-      .filter(t => t.transaction_type === 'debt_payment')
-      .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount || 0)), 0);
+    const totalDebtPaid = parseFloat(bankData?.total_debt_paid || 0);
 
     const totalTreasuryDeductions = totalTaxTransferred + totalDebtPaid;
 
@@ -1685,12 +1681,12 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       });
     });
 
-    const totalCalculatedPending = Math.max(0, totalRevenue - totalPaid - totalTaxTransferred - totalDebtPaid);
+    // "Klan Bakiyesi = Toplam Alacaklar" garantilemek için doğrudan banka bakiyesini referans alıyoruz
+    const totalCalculatedPending = parseFloat(bankData?.balance || 0);
     
     // Üye bazlı alacakları, toplam kullanılabilir bakiyeye (totalCalculatedPending) göre oranla.
-    // Bu, "Klan Bakiyesi = Toplam Alacaklar" eşitliğini sağlar.
     const totalExpectedGross = Object.values(memberStats).reduce((sum, s) => sum + s.expected, 0);
-    const payoutRatio = totalExpectedGross > 0 ? (totalRevenue - totalTaxTransferred - totalDebtPaid) / totalExpectedGross : 0;
+    const payoutRatio = totalExpectedGross > 0 ? totalCalculatedPending / totalExpectedGross : 0;
 
     const totalPending = totalCalculatedPending;
     const topParticipants = Object.values(memberStats).filter(s => s.runs > 0).sort((a, b) => b.runs - a.runs).slice(0, 5);
@@ -2484,7 +2480,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                             </td>
                             <td className="px-6 py-4 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                {selectedClan.owner_id === uid && member.user_id !== uid && (
+                                {selectedClan.owner_id === uid && (
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -3871,7 +3867,12 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                   )}
                   <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
                     {selectedRun.participants
-                      ?.filter(p => (p.nickname || p.main_character || p.username || '').toLowerCase().includes(participantSearch.toLowerCase()))
+                      ?.filter(p => {
+                        const searchBase = (p.user_id === uid) 
+                          ? (userData?.profile?.mainCharacter || p.nickname || p.main_character || p.username || '') 
+                          : (p.nickname || p.main_character || p.username || '');
+                        return searchBase.toLowerCase().includes(participantSearch.toLowerCase());
+                      })
                       .map((participant, index) => {
                         const total = (selectedRun.total_sold_amount || 0) - (selectedRun.total_treasury_amount || 0);
                         const count = selectedRun.participants?.length || 1;
@@ -4221,7 +4222,6 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {clanMembers
-                    .filter(member => member.user_id !== uid) // Kendi hariç diğer üyeleri göster
                     .filter(member =>
                       (member.nickname || member.username || '').toLowerCase().includes(participantSearch.toLowerCase()) ||
                       (member.main_character || '').toLowerCase().includes(participantSearch.toLowerCase())
@@ -4277,7 +4277,6 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                     })}
 
                   {clanMembers.filter(member =>
-                    member.user_id !== uid &&
                     ((member.nickname || member.username || '').toLowerCase().includes(participantSearch.toLowerCase()) ||
                       (member.main_character || '').toLowerCase().includes(participantSearch.toLowerCase()))
                   ).length === 0 && (

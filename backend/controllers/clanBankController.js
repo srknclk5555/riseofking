@@ -27,8 +27,19 @@ const getClanBank = async (req, res) => {
             [clanId]
         );
 
+        // Tüm zamanların Tax ve Borç ödemelerinin toplamını hesapla (Pagination kayıplarını önlemek için)
+        const statsResult = await pool.query(
+            `SELECT 
+                COALESCE(SUM(CASE WHEN transaction_type = 'tax_transfer' THEN ABS(amount) ELSE 0 END), 0) as total_tax_transferred,
+                COALESCE(SUM(CASE WHEN transaction_type = 'debt_payment' THEN ABS(amount) ELSE 0 END), 0) as total_debt_paid
+             FROM clan_bank_transactions 
+             WHERE clan_id = $1`, 
+            [clanId]
+        );
+
         // Eğer bakiye kaydı yoksa varsayılan değerleri kullan
         const balanceInfo = balanceResult.rows.length > 0 ? balanceResult.rows[0] : { balance: 0, clan_debt: 0, clan_tax: 0, debt_explanation: '' };
+        const statsInfo = statsResult.rows.length > 0 ? statsResult.rows[0] : { total_tax_transferred: 0, total_debt_paid: 0 };
 
         // Mevcut itemleri getir (available)
         const itemsResult = await pool.query(
@@ -41,6 +52,8 @@ const getClanBank = async (req, res) => {
             clan_debt: balanceInfo.clan_debt,
             clan_tax: balanceInfo.clan_tax,
             debt_explanation: balanceInfo.debt_explanation,
+            total_tax_transferred: statsInfo.total_tax_transferred,
+            total_debt_paid: statsInfo.total_debt_paid,
             items: itemsResult.rows,
             role: memberCheck.rows[0].role
         });

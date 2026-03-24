@@ -617,8 +617,9 @@ const getClanBossRuns = async (req, res) => {
         // Tarih filtresi varsa -> Limit yok
         // Tarih filtresi yoksa:
         //   - open -> Limit yok
-        //   - closed veya all -> LIMIT 10
-        if (!startDate && !endDate && (status === 'closed' || status === 'all')) {
+        //   - closed -> LIMIT 10
+        //   - all -> Limit yok (Rapor sekmesinde tüm geçmiş veriyi görebilmek için)
+        if (!startDate && !endDate && status === 'closed') {
             query += ` LIMIT 10`;
         }
 
