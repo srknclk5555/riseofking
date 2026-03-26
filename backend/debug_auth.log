@@ -199,3 +199,34 @@
 2026-03-19T19:14:51.495Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
 2026-03-19T19:14:52.111Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
 2026-03-19T19:15:05.659Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
+2026-03-24T10:33:03.831Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
+2026-03-24T10:33:04.371Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
+2026-03-24T10:33:08.625Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
+2026-03-24T10:33:08.766Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
+2026-03-24T12:52:59.495Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
+2026-03-24T12:53:00.018Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
+2026-03-24T12:55:56.848Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
+2026-03-24T12:55:57.342Z [MSG]: getAllMessages Check - UserID Param: "user_1771524856186_hfpxs9mqo", AuthUser ID: "653", Type: number
+2026-03-24T18:09:09.912Z [MSG]: getAllMessages Check - UserID Param: "user_1772962836734_zj4lwfko2", AuthUser ID: "759", Type: number
+2026-03-24T18:09:10.313Z [MSG]: getAllMessages Check - UserID Param: "user_1772962836734_zj4lwfko2", AuthUser ID: "759", Type: number
+2026-03-24T18:13:45.877Z [MSG]: getAllMessages Check - UserID Param: "user_1772962836734_zj4lwfko2", AuthUser ID: "759", Type: number
+2026-03-24T18:13:46.276Z [MSG]: getAllMessages Check - UserID Param: "user_1772962836734_zj4lwfko2", AuthUser ID: "759", Type: number
+2026-03-24T21:20:04.912Z [MSG]: getAllMessages Check - UserID Param: "user_1772962817348_rf8e75pty", AuthUser ID: "756", Type: number
+2026-03-24T21:20:05.306Z [MSG]: getAllMessages Check - UserID Param: "user_1772962817348_rf8e75pty", AuthUser ID: "756", Type: number
+2026-03-24T21:44:28.282Z [MSG]: getAllMessages Check - UserID Param: "user_1772962817348_rf8e75pty", AuthUser ID: "756", Type: number
+2026-03-24T21:44:28.681Z [MSG]: getAllMessages Check - UserID Param: "user_1772962817348_rf8e75pty", AuthUser ID: "756", Type: number
+2026-03-24T21:44:51.663Z [MSG]: getAllMessages Check - UserID Param: "user_1772962817348_rf8e75pty", AuthUser ID: "756", Type: number
+2026-03-24T21:44:55.491Z [MSG]: Request Body: {"receiverId":"user_1772962836734_zj4lwfko2","text":"sa"}
+2026-03-24T21:44:55.547Z [MSG]: Attempting encryption for text length: 2
+2026-03-24T21:44:55.548Z [MSG]: Encryption successful
+2026-03-24T21:44:55.548Z [MSG]: Inserting into DB: sender=user_1772962817348_rf8e75pty, receiver=user_1772962836734_zj4lwfko2
+2026-03-24T21:44:55.609Z [MSG]: DB Insert successful, ID: 52
+2026-03-24T21:45:17.187Z [MSG]: Request Body: {"receiverId":"user_1772962836734_zj4lwfko2","text":"🚨 DİKKAT! 🚨   BU KLAN YÖNETİM TARAFINDAN KAPATILMIŞTIR.   Tüm varlıklarınıza el konulmuştur. Rise Online Tracker veritabanı siliniyor...   SİSTEMDEN ÇIKIŞ YAPILIYOR..."}
+2026-03-24T21:45:17.571Z [MSG]: Attempting encryption for text length: 169
+2026-03-24T21:45:17.571Z [MSG]: Encryption successful
+2026-03-24T21:45:17.571Z [MSG]: Inserting into DB: sender=user_1772962817348_rf8e75pty, receiver=user_1772962836734_zj4lwfko2
+2026-03-24T21:45:17.627Z [MSG]: DB Insert successful, ID: 53
+2026-03-25T00:59:06.841Z [MSG]: getAllMessages Check - UserID Param: "user_1774399564790_2k31ptpkl", AuthUser ID: "771", Type: number
+2026-03-25T00:59:07.245Z [MSG]: getAllMessages Check - UserID Param: "user_1774399564790_2k31ptpkl", AuthUser ID: "771", Type: number
+2026-03-25T01:29:59.050Z [MSG]: getAllMessages Check - UserID Param: "user_1774399564790_2k31ptpkl", AuthUser ID: "771", Type: number
+2026-03-25T01:29:59.431Z [MSG]: getAllMessages Check - UserID Param: "user_1774399564790_2k31ptpkl", AuthUser ID: "771", Type: number

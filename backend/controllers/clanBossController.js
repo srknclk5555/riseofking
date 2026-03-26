@@ -16,7 +16,7 @@ const createClanBossRun = async (req, res) => {
 
         // Önce klan üyeliği ve yetki kontrolü (sadece klan üyeleri oluşturabilir)
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
 
@@ -77,7 +77,7 @@ const createClanBossRun = async (req, res) => {
                 for (const pUid of participants) {
                     // Klan üyesi mi kontrol et
                     const isMember = await client.query(
-                        'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+                        'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
                         [clanId, pUid]
                     );
 
@@ -396,7 +396,7 @@ const getClanBossRunDetails = async (req, res) => {
 
         // Güvenlik kontrolü: Kullanıcı klan üyesi mi?
         const memberCheck = await pool.query(
-            'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [run.clan_id, userId]
         );
 
@@ -536,7 +536,7 @@ const getClanBossRuns = async (req, res) => {
 
         // Kullanıcı klan üyesi mi?
         const memberCheck = await pool.query(
-            'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
 
@@ -700,7 +700,7 @@ const bulkUpdateAllPaymentStatus = async (req, res) => {
 
         const { clan_id, created_by, boss_name } = runInfo.rows[0];
         const userRole = await client.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clan_id, userId]
         );
 
@@ -891,7 +891,7 @@ const updateParticipantPayStatus = async (req, res) => {
 
         const { clan_id, created_by } = runInfo.rows[0];
         const userRole = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clan_id, userId]
         );
 
@@ -1080,7 +1080,7 @@ const removeParticipantFromRun = async (req, res) => {
 
         const { clan_id, created_by } = runInfo.rows[0];
         const userRole = await client.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clan_id, userId]
         );
 

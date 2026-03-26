@@ -14,7 +14,7 @@ const getClanBank = async (req, res) => {
 
         // Yetki kontrolü (klan üyesi mi?)
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0) {
@@ -70,7 +70,7 @@ const updateClanDebt = async (req, res) => {
         const userId = req.user?.uid;
 
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
@@ -101,7 +101,7 @@ const updateClanTax = async (req, res) => {
         const userId = req.user?.uid;
 
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
@@ -133,7 +133,7 @@ const processTreasuryAction = async (req, res) => {
         const userId = req.user?.uid;
 
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
@@ -275,7 +275,7 @@ const sellItem = async (req, res) => {
 
         // Yetki kontrolü (Sadece leader)
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
@@ -394,7 +394,7 @@ const payParticipant = async (req, res) => {
 
         // Yetki kontrolü (Sadece leader)
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
@@ -511,7 +511,7 @@ const bulkPayParticipant = async (req, res) => {
 
         // Yetki kontrolü (Sadece leader)
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
@@ -620,7 +620,7 @@ const getMemberPayableRuns = async (req, res) => {
 
         // Yetki kontrolü (Klan lideri mi yoksa kendisi mi?)
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, requesterId]
         );
         if (memberCheck.rows.length === 0) {
@@ -686,7 +686,7 @@ const addManualItem = async (req, res) => {
         if (!clanId || !itemName || !quantity) return res.status(400).json({ error: 'Eksik bilgi' });
 
         const memberCheck = await pool.query(
-            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT role FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'leader') {
@@ -716,7 +716,7 @@ const getTransactions = async (req, res) => {
         const userId = req.user?.uid;
 
         const memberCheck = await pool.query(
-            'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Yetki yok' });
@@ -754,7 +754,7 @@ const getSoldItems = async (req, res) => {
 
         // Yetki kontrolü (klan üyesi mi?)
         const memberCheck = await pool.query(
-            'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2',
+            'SELECT 1 FROM clan_members WHERE clan_id = $1 AND user_id = $2 AND status = \'active\'',
             [clanId, userId]
         );
         if (memberCheck.rows.length === 0) {

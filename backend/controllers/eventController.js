@@ -1,10 +1,4 @@
-const { Pool } = require('pg');
-require('dotenv').config();
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+const pool = require('../config/database');
 
 class EventController {
   // Etkinlik şeması ve sabit verileri oluştur
@@ -106,6 +100,10 @@ class EventController {
   // Tüm etkinlik loglarını getir
   static async getAllLogs(req, res) {
     try {
+      if (req.params.userId !== req.user.uid) {
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
+      }
+
       const { userId } = req.params;
       const { date, eventType } = req.query;
 
@@ -135,6 +133,10 @@ class EventController {
   // Belirli tarih için etkinlik loglarını getir
   static async getLogsByDate(req, res) {
     try {
+      if (req.params.userId !== req.user.uid) {
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
+      }
+
       const { userId, date } = req.params;
       const { eventType } = req.query;
 
@@ -190,13 +192,13 @@ class EventController {
              price = COALESCE($2, price), 
              duration = COALESCE($3, duration),
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $4
+         WHERE id = $4 AND user_id = $5
          RETURNING *`,
-        [count, price, duration, id]
+        [count, price, duration, id, req.user.uid]
       );
 
       if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Event log not found' });
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
       }
 
       res.json(result.rows[0]);
@@ -212,12 +214,12 @@ class EventController {
       const { id } = req.params;
 
       const result = await pool.query(
-        'DELETE FROM event_logs WHERE id = $1 RETURNING *',
-        [id]
+        'DELETE FROM event_logs WHERE id = $1 AND user_id = $2 RETURNING *',
+        [id, req.user.uid]
       );
 
       if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Event log not found' });
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
       }
 
       res.json({ message: 'Event log deleted successfully' });
@@ -230,6 +232,10 @@ class EventController {
   // Belirli etkinlik için süre getir
   static async getDuration(req, res) {
     try {
+      if (req.params.userId !== req.user.uid) {
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
+      }
+
       const { userId, date, eventType } = req.params;
 
       const result = await pool.query(
@@ -251,6 +257,10 @@ class EventController {
   // Etkinlik süresini güncelle
   static async updateDuration(req, res) {
     try {
+      if (req.params.userId !== req.user.uid) {
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
+      }
+
       const { userId, date, eventType } = req.params;
       const { duration } = req.body;
 
@@ -307,7 +317,7 @@ class EventController {
   // Planlı etkinlik sonucu oluştur / güncelle / sil
   static async upsertResult(req, res) {
     try {
-      const { userId } = req.params;
+      const userId = req.user.uid;
       const { eventType, date, time, result, profit } = req.body;
 
       if (!eventType || !date || !time) {

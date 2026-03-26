@@ -43,9 +43,7 @@ class MessageController {
           error: 'Unauthorized access to messages',
           debug_info: {
             url_param_userId: userId,
-            token_userId: req.user.id,
-            token_firebase: req.user.firebase,
-            token_jwt: req.user.jwt
+            token_userId: req.user.id
           }
         });
       }

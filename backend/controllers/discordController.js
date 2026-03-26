@@ -1,5 +1,13 @@
 const { Pool } = require('pg');
 
+const DISCORD_WEBHOOK_PATTERN = /^https:\/\/discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/;
+
+const validateWebhookUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  if (url.length > 500) return false;
+  return DISCORD_WEBHOOK_PATTERN.test(url);
+};
+
 // Kullanıcı Discord ayarlarını al
 const getUserDiscordSettings = async (req, res) => {
   const { userId } = req.params;
@@ -35,6 +43,11 @@ const updateUserDiscordSettings = async (req, res) => {
   let user_id = req.body.user_id || req.params.userId;
   const { discord_webhook_url, discord_username, discord_user_id, discord_mention_enabled } = req.body;
   const client = req.dbClient;
+
+  // Webhook URL doğrulaması
+  if (discord_webhook_url && !validateWebhookUrl(discord_webhook_url)) {
+    return res.status(400).json({ error: 'Geçersiz Discord webhook URL formatı' });
+  }
 
   try {
     // Mevcut ayarları kontrol et
@@ -111,6 +124,12 @@ const sendClanBossRunNotification = async (req, res) => {
       if (settingsResult.rows.length > 0 && settingsResult.rows[0].discord_webhook_url) {
         const setting = settingsResult.rows[0];
         
+        // Webhook URL doğrulaması
+        if (!validateWebhookUrl(setting.discord_webhook_url)) {
+          console.warn(`Geçersiz webhook URL atlanıyor (User: ${member.user_id})`);
+          continue;
+        }
+
         // Discord webhookuna bildirim gönder
         await sendDiscordNotification(
           setting.discord_webhook_url,
@@ -131,6 +150,12 @@ const sendClanBossRunNotification = async (req, res) => {
 
 // Discord webhookuna bildirim gönderme fonksiyonu
 const sendDiscordNotification = async (webhookUrl, runData, username, userId, mentionEnabled) => {
+  // Webhook URL doğrulaması
+  if (!validateWebhookUrl(webhookUrl)) {
+    console.warn('Geçersiz Discord webhook URL; bildirim gönderilemedi:', webhookUrl);
+    return;
+  }
+
   try {
     // Discord mesaj formatı oluştur
     const embed = {
@@ -194,6 +219,11 @@ const sendClanBossNotification = async (clanId, runData, memberDiscordSettings) 
     // Her bir üye için Discord bildirimi gönder
     for (const setting of memberDiscordSettings) {
       if (setting && setting.discord_webhook_url) {
+        // Webhook URL doğrulaması
+        if (!validateWebhookUrl(setting.discord_webhook_url)) {
+          continue;
+        }
+
         await sendDiscordNotification(
           setting.discord_webhook_url,
           runData,

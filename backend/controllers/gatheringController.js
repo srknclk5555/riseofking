@@ -1,15 +1,14 @@
-const { Pool } = require('pg');
 require('dotenv').config();
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+const pool = require('../config/database');
 
 class GatheringController {
   // Tüm toplama loglarını getir
   static async getAllLogs(req, res) {
     try {
+      if (req.params.userId !== req.user.uid) {
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
+      }
+
       const { userId } = req.params;
       const { date, profession } = req.query;
 
@@ -94,13 +93,13 @@ class GatheringController {
              price = COALESCE($2, price), 
              duration = COALESCE($3, duration),
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $4
+         WHERE id = $4 AND user_id = $5
          RETURNING *`,
-        [count, price, duration, id]
+        [count, price, duration, id, req.user.uid]
       );
 
       if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Gathering log not found' });
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
       }
 
       res.json(result.rows[0]);
@@ -116,12 +115,12 @@ class GatheringController {
       const { id } = req.params;
 
       const result = await pool.query(
-        'DELETE FROM gathering_logs WHERE id = $1 RETURNING *',
-        [id]
+        'DELETE FROM gathering_logs WHERE id = $1 AND user_id = $2 RETURNING *',
+        [id, req.user.uid]
       );
 
       if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Gathering log not found' });
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
       }
 
       res.json({ message: 'Gathering log deleted successfully' });
@@ -134,6 +133,10 @@ class GatheringController {
   // Belirli profesyon için süre getir
   static async getDuration(req, res) {
     try {
+      if (req.params.userId !== req.user.uid) {
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
+      }
+
       const { userId, date, profession } = req.params;
 
       const result = await pool.query(
@@ -155,6 +158,10 @@ class GatheringController {
   // Profesyon süresini güncelle
   static async updateDuration(req, res) {
     try {
+      if (req.params.userId !== req.user.uid) {
+        return res.status(403).json({ error: 'Yetkisiz erişim' });
+      }
+
       const { userId, date, profession } = req.params;
       const { duration } = req.body;
 

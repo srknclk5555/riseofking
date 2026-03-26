@@ -1,9 +1,10 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const itemsRouter = require('./routes/items');
 const pool = require('./config/database');
 require('dotenv').config();
-const helmet = require('helmet');
 const { generalLimiter } = require('./middleware/rateLimiter');
 const requestLogger = require('./middleware/requestLogger');
 const authMiddleware = require('./middleware/auth');
@@ -38,14 +39,22 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false, // Bazı embed içerikler için gerekli
 }));
-app.use(cors());
+app.use(cors({
+  origin: ['https://riseofking.srknclk78.workers.dev', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json({ limit: '1mb' })); // Büyük payload saldırılarını engelle
 
 // 🔒 Global XSS Sanitization: Tüm route'lardan önce çalışır
 app.use(sanitizeMiddleware);
 
+// Cookie parser
+app.use(cookieParser());
+
 // app.use(requestLogger);
-app.use(generalLimiter); // 🔒 Global rate limiting: 15 dak. / 200 istek
+app.use(generalLimiter); // 🔒 Global rate limiting: IP bazlı (auth'dan önce)
 
 // Database pool middleware
 app.use((req, res, next) => {

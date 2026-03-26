@@ -9,6 +9,7 @@ export const register = async (userData) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(userData),
+      credentials: 'include'
     });
 
     if (!response.ok) {
@@ -18,8 +19,6 @@ export const register = async (userData) => {
 
     const data = await response.json();
 
-    // Store the token in localStorage
-    localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
 
     return data;
@@ -38,6 +37,7 @@ export const login = async (credentials) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(credentials),
+      credentials: 'include'
     });
 
     if (!response.ok) {
@@ -47,8 +47,6 @@ export const login = async (credentials) => {
 
     const data = await response.json();
 
-    // Store the token in localStorage
-    localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
 
     return data;
@@ -59,8 +57,15 @@ export const login = async (credentials) => {
 };
 
 // Logout user
-export const logout = () => {
-  localStorage.removeItem('token');
+export const logout = async () => {
+  try {
+    await fetch(`${API_BASE}/auth/logout`, { 
+      method: 'POST', 
+      credentials: 'include' 
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+  }
   localStorage.removeItem('user');
   window.location.reload();
 };
@@ -71,25 +76,24 @@ export const getCurrentUser = () => {
   return user ? JSON.parse(user) : null;
 };
 
-// Get auth token
+// Get auth token (Obsolete with httpOnly cookies)
 export const getAuthToken = () => {
-  return localStorage.getItem('token');
+  return null;
 };
 
 // Check if user is authenticated
 export const isAuthenticated = () => {
-  return !!localStorage.getItem('token');
+  return !!localStorage.getItem('user');
 };
 
 // Update user profile
 export const updateProfile = async (userId, profileData) => {
   try {
-    const token = getAuthToken();
     const response = await fetch(`${API_BASE}/users/profile/${userId}`, {
       method: 'PUT',
+      credentials: 'include',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(profileData),
     });

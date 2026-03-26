@@ -13,6 +13,10 @@ const register = async (req, res) => {
       return res.status(400).json({ error: 'Email, username, and password are required' });
     }
 
+    if (username.toLowerCase() === 'astral1') {
+      return res.status(400).json({ error: 'Bu kullanıcı adı kullanılamaz' });
+    }
+
     // Check if user already exists
     const existingUser = await db.query(
       'SELECT id FROM users WHERE email = $1 OR username = $2',
@@ -34,7 +38,7 @@ const register = async (req, res) => {
     const result = await db.query(
       `INSERT INTO users (uid, email, username, password_hash, "mainCharacter", profile)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, uid, email, username, "mainCharacter", created_at as "createdAt"`,
+       RETURNING id, uid, email, username, "mainCharacter", is_admin, created_at as "createdAt"`,
       [uid, email, username, passwordHash, mainCharacter || null, {}]
     );
 
@@ -46,11 +50,19 @@ const register = async (req, res) => {
         uid: user.uid,
         id: user.id,
         email: user.email,
-        username: user.username
+        username: user.username,
+        is_admin: user.is_admin || false
       },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '1d' }
     );
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 1 gün
+    });
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -60,8 +72,7 @@ const register = async (req, res) => {
         email: user.email,
         username: user.username,
         mainCharacter: user.mainCharacter
-      },
-      token
+      }
     });
 
   } catch (error) {
@@ -82,10 +93,10 @@ const login = async (req, res) => {
     // Find user by email or username
     let query, params;
     if (email) {
-      query = 'SELECT id, uid, email, username, password_hash, "mainCharacter", profile FROM users WHERE email = $1';
+      query = 'SELECT id, uid, email, username, password_hash, "mainCharacter", profile, is_admin FROM users WHERE email = $1';
       params = [email];
     } else {
-      query = 'SELECT id, uid, email, username, password_hash, "mainCharacter", profile FROM users WHERE username = $1';
+      query = 'SELECT id, uid, email, username, password_hash, "mainCharacter", profile, is_admin FROM users WHERE username = $1';
       params = [username];
     }
 
@@ -109,11 +120,19 @@ const login = async (req, res) => {
         uid: user.uid,
         id: user.id,
         email: user.email,
-        username: user.username
+        username: user.username,
+        is_admin: user.is_admin || false
       },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '1d' }
     );
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 1 gün
+    });
 
     res.json({
       message: 'Login successful',
@@ -123,8 +142,7 @@ const login = async (req, res) => {
         email: user.email,
         username: user.username,
         mainCharacter: user.mainCharacter
-      },
-      token
+      }
     });
 
   } catch (error) {
@@ -209,9 +227,25 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const logout = async (req, res) => {
+  try {
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+    
+    res.json({ message: 'Logout successful' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ error: 'Logout failed' });
+  }
+};
+
 module.exports = {
   register,
   login,
+  logout,
   getProfile,
   updateProfile
 };

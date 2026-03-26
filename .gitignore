@@ -22,3 +22,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 backend/*.json
+
+# Firebase kalıntıları (eski scriptler)
+backend/scripts/import-firestore-items.js
+backend/scripts/import-items.js
+backend/scripts/import-items-new-structure.js

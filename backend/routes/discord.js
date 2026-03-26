@@ -1,36 +1,32 @@
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
+const authMiddleware = require('../middleware/auth');
 const { getUserDiscordSettings, updateUserDiscordSettings, sendClanBossRunNotification } = require('../controllers/discordController');
 
-// Middleware to get database client (BAŞINDA)
-router.use(async (req, res, next) => {
-  try {
-    req.dbClient = await req.dbPool.connect();
-    next();
-  } catch (error) {
-    console.error('Database connection error:', error);
-    res.status(500).json({ error: 'Database connection failed' });
-  }
+// Rate Limiter: Yazma işlemleri için dakikada max 30 istek
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => req.ip,
+  message: { error: 'Çok fazla istek gönderdiniz. Lütfen bir dakika bekleyin.' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
+
+// Tüm route'lar için yetkilendirme gerekli
+router.use(authMiddleware);
 
 // Kullanıcı Discord ayarlarını al
 router.get('/settings/:userId', getUserDiscordSettings);
 
 // Kullanıcı Discord ayarlarını güncelle (POST)
-router.post('/settings', updateUserDiscordSettings);
+router.post('/settings', writeLimiter, updateUserDiscordSettings);
 
 // Kullanıcı Discord ayarlarını güncelle (PUT - userId URL'de)
-router.put('/settings/:userId', updateUserDiscordSettings);
+router.put('/settings/:userId', writeLimiter, updateUserDiscordSettings);
 
 // Clan boss run bildirimi gönder
-router.post('/clan-boss-run', sendClanBossRunNotification);
+router.post('/clan-boss-run', writeLimiter, sendClanBossRunNotification);
 
-// Release database client after each request (SONUNDA)
-router.use((req, res, next) => {
-  if (req.dbClient) {
-    req.dbClient.release();
-  }
-  next();
-});
-
-module.exports = router;module.exports = router;
+module.exports = router;

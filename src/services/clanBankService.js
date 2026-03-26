@@ -1,9 +1,7 @@
 import { API_BASE } from './apiConfig';
 
 const getAuthHeaders = () => {
-    const token = localStorage.getItem('token');
     return {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
     };
 };
@@ -11,7 +9,8 @@ const getAuthHeaders = () => {
 const clanBankService = {
     getClanBank: async (clanId) => {
         const response = await fetch(`${API_BASE}/clan-bank/${clanId}`, {
-            headers: getAuthHeaders()
+            headers: getAuthHeaders(),
+            credentials: 'include'
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -24,6 +23,7 @@ const clanBankService = {
         const response = await fetch(`${API_BASE}/clan-bank/sell`, {
             method: 'POST',
             headers: getAuthHeaders(),
+            credentials: 'include',
             body: JSON.stringify(saleData)
         });
         if (!response.ok) {
@@ -37,6 +37,7 @@ const clanBankService = {
         const response = await fetch(`${API_BASE}/clan-bank/pay`, {
             method: 'POST',
             headers: getAuthHeaders(),
+            credentials: 'include',
             body: JSON.stringify(paymentData)
         });
         if (!response.ok) {
@@ -50,6 +51,7 @@ const clanBankService = {
         const response = await fetch(`${API_BASE}/clan-bank/bulk-pay`, {
             method: 'POST',
             headers: getAuthHeaders(),
+            credentials: 'include',
             body: JSON.stringify(paymentData)
         });
         if (!response.ok) {
@@ -63,6 +65,7 @@ const clanBankService = {
         const response = await fetch(`${API_BASE}/clan-bank/manual-item`, {
             method: 'POST',
             headers: getAuthHeaders(),
+            credentials: 'include',
             body: JSON.stringify(itemData)
         });
         if (!response.ok) {
@@ -74,7 +77,8 @@ const clanBankService = {
 
     getTransactions: async (clanId) => {
         const response = await fetch(`${API_BASE}/clan-bank/${clanId}/transactions`, {
-            headers: getAuthHeaders()
+            headers: getAuthHeaders(),
+            credentials: 'include'
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -85,7 +89,8 @@ const clanBankService = {
 
     getSoldItems: async (clanId) => {
         const response = await fetch(`${API_BASE}/clan-bank/${clanId}/sold`, {
-            headers: getAuthHeaders()
+            headers: getAuthHeaders(),
+            credentials: 'include'
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -96,7 +101,8 @@ const clanBankService = {
 
     getMemberPayableRuns: async (clanId, userId) => {
         const response = await fetch(`${API_BASE}/clan-bank/${clanId}/members/${userId}/payable-runs`, {
-            headers: getAuthHeaders()
+            headers: getAuthHeaders(),
+            credentials: 'include'
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -109,6 +115,7 @@ const clanBankService = {
         const response = await fetch(`${API_BASE}/clan-bank/debt`, {
             method: 'POST',
             headers: getAuthHeaders(),
+            credentials: 'include',
             body: JSON.stringify({ clanId, ...debtData })
         });
         if (!response.ok) {
@@ -122,6 +129,7 @@ const clanBankService = {
         const response = await fetch(`${API_BASE}/clan-bank/tax`, {
             method: 'POST',
             headers: getAuthHeaders(),
+            credentials: 'include',
             body: JSON.stringify({ clanId, ...taxData })
         });
         if (!response.ok) {
@@ -135,6 +143,7 @@ const clanBankService = {
         const response = await fetch(`${API_BASE}/clan-bank/treasury-action`, {
             method: 'POST',
             headers: getAuthHeaders(),
+            credentials: 'include',
             body: JSON.stringify({ clanId, ...actionData })
         });
         if (!response.ok) {

@@ -11,7 +11,7 @@ class SocketService {
         this.pendingListeners = []; // Socket oluşmadan gelen listenerlar için kuyruk
     }
 
-    connect(userId, token) {
+    connect(userId) {
         if (this.socket) {
             console.log('[SocketService] Already connected.');
             return;
@@ -22,13 +22,13 @@ class SocketService {
 
         this.socket = io(API_URL, {
             auth: {
-                token: token,
                 userId: userId
             },
+            withCredentials: true,
             reconnection: true,
             reconnectionAttempts: 10,
             reconnectionDelay: 1000,
-            transports: ['websocket', 'polling'] // Önce websocket dener, olmazsa polling'e düşer
+            transports: ['websocket', 'polling'] 
         });
 
         this.socket.on('connect', () => {

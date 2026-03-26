@@ -2,15 +2,14 @@ import { API_BASE } from './apiConfig';
 
 const clanBossService = {
     getClanBossRuns: async (clanId, params = {}) => {
-        const token = localStorage.getItem('token');
         const queryParams = new URLSearchParams(params).toString();
         const url = `${API_BASE}/clan-boss/runs/clan/${clanId}${queryParams ? `?${queryParams}` : ''}`;
         
         const response = await fetch(url, {
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            credentials: 'include'
         });
 
         if (!response.ok) {
@@ -22,12 +21,11 @@ const clanBossService = {
     },
 
     getClanBossRunDetails: async (id) => {
-        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/runs/${id}`, {
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            credentials: 'include'
         });
 
         if (!response.ok) {
@@ -39,12 +37,11 @@ const clanBossService = {
     },
 
     getClanMembers: async (clanId) => {
-        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/members/${clanId}`, {
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            credentials: 'include'
         });
 
         if (!response.ok) {
@@ -56,13 +53,12 @@ const clanBossService = {
     },
 
     createClanBossRun: async (runData) => {
-        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/runs`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
+            credentials: 'include',
             body: JSON.stringify(runData)
         });
 
@@ -75,13 +71,12 @@ const clanBossService = {
     },
 
     updateClanBossRun: async (id, runData) => {
-        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/runs/${id}`, {
             method: 'PUT',
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
+            credentials: 'include',
             body: JSON.stringify(runData)
         });
 
@@ -94,13 +89,12 @@ const clanBossService = {
     },
 
     deleteClanBossRun: async (id) => {
-        const token = localStorage.getItem('token');
         const response = await fetch(`${API_BASE}/clan-boss/runs/${id}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            credentials: 'include'
         });
 
         if (!response.ok) {

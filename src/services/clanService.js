@@ -1,14 +1,9 @@
 import { API_BASE } from './apiConfig';
 
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  const headers = {
+  return {
     'Content-Type': 'application/json',
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
 };
 
 export const clanService = {
@@ -18,6 +13,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans`, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -35,6 +31,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/user/${userId}`, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include' // Cookie gönderimi için ZORUNLU
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -53,6 +50,7 @@ export const clanService = {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(clanData),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -70,6 +68,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/${clanId}`, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -87,6 +86,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/${clanId}/members`, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -105,6 +105,7 @@ export const clanService = {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ userIds }),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -122,6 +123,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/${clanId}/member/${userId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -139,6 +141,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/${clanId}/applications`, {
         method: 'POST',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -157,6 +160,7 @@ export const clanService = {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify(clanData),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -174,6 +178,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/${clanId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -191,6 +196,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/users/available-for-clan`, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -218,6 +224,7 @@ export const clanService = {
       const response = await fetch(cleanUrl, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -237,6 +244,7 @@ export const clanService = {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ text }),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -453,6 +461,7 @@ export const clanService = {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(data),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -470,6 +479,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/${clanId}/acp/daily?date=${date}`, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -487,6 +497,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/${clanId}/acp/history?limit=${limit}&offset=${page * limit}`, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -505,6 +516,7 @@ export const clanService = {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify(data),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

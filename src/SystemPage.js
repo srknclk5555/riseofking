@@ -5,7 +5,7 @@ import {
 import { 
   itemService, locationService, mobService
 } from './services/api';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 // Konum verilerini dışa aktar
 let exportedLocations = [];
@@ -526,33 +526,48 @@ const SystemPage = ({ userData, uid, showNotification, checkRateLimit }) => {
     if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
       // Excel dosyası için özel işlem
       const reader = new FileReader();
-      reader.onload = (e) => {
-        const data = XLSX.read(e.target.result, { type: 'binary' });
-        const firstSheetName = data.SheetNames[0];
-        const worksheet = data.Sheets[firstSheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        
-        // İlk satır başlıklar
-        const headers = jsonData[0];
-        
-        // Diğer satırlar veriler
-        const dataRows = jsonData.slice(1).map(row => {
-          const rowData = {};
-          headers.forEach((header, index) => {
-            rowData[header] = row[index] ? row[index].toString().trim().replace(/^"|"$/g, '') : '';
+      reader.onload = async (e) => {
+        try {
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.load(e.target.result);
+          
+          const worksheet = workbook.worksheets[0];
+          const jsonData = [];
+          
+          worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return; // İlk satır başlıklar
+            const rowValues = {};
+            row.eachCell((cell, colNumber) => {
+              const header = worksheet.getRow(1).getCell(colNumber).value;
+              if (header) {
+                rowValues[header] = cell.value;
+              }
+            });
+            jsonData.push(rowValues);
           });
-          return rowData;
-        });
-        
-        setCsvData(dataRows);
-        showNotification(`${dataRows.length} item dosyadan okundu.`);
+          
+          // Diğer satırlar veriler
+          const dataRows = jsonData.map(row => {
+            const rowData = {};
+            Object.keys(row).forEach(key => {
+              rowData[key] = row[key] ? row[key].toString().trim().replace(/^"|"$/g, '') : '';
+            });
+            return rowData;
+          });
+          
+          setCsvData(dataRows);
+          showNotification(`${dataRows.length} item dosyadan okundu.`);
+        } catch (error) {
+          console.error('Excel okuma hatası:', error);
+          showNotification('Excel dosyası okunamadı.', 'error');
+        }
       };
       
-      reader.readAsBinaryString(file);
+      reader.readAsArrayBuffer(file);
     } else if (fileName.endsWith('.csv')) {
       // CSV dosyası için işlem
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         const text = e.target.result;
         const lines = text.split('\n');
         
@@ -693,18 +708,34 @@ const SystemPage = ({ userData, uid, showNotification, checkRateLimit }) => {
   };
 
   // Örnek Excel şablonunu indir
-  const downloadSampleExcel = () => {
+  const downloadSampleExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Items');
+    
+    // Başlıkları ekle
     const headers = ITEM_EXCEL_SCHEMA.map(s => s.header);
-    const emptyRow = headers.reduce((acc, h) => ({ ...acc, [h]: '' }), {});
+    worksheet.columns = headers.map(header => ({ header, key: header }));
+    
+    // Örnek veriler
     const sampleData = [
-      { ...emptyRow, 'İtem Çeşidi': 'Kolye', 'İtem Adı': 'Ancient Assassin Pendant', 'İtem Türü (Rarity)': 'Ancient', 'Seviye': '30', 'HP Bonusu': '20', 'Dexterity Bonus (Çeviklik Bonusu)': '14' },
-      { ...emptyRow, 'İtem Çeşidi': 'Kolye', 'İtem Adı': 'Ancient Brawler\'s Pendant', 'İtem Türü (Rarity)': 'Ancient', 'Seviye': '30', 'Fiziksel Savunma Bonusu': '12', 'Strength Bonus (Kuvvet Bonusu)': '10', 'HP Bonusu': '30' },
-      { ...emptyRow, 'İtem Çeşidi': 'Kolye', 'İtem Adı': 'Ancient Cleric\'s Pendant', 'İtem Türü (Rarity)': 'Ancient', 'Seviye': '30', 'Magic Bonus': '14', 'HP Bonusu': '60', 'MP Bonusu': '30' }
+      { 'İtem Çeşidi': 'Kolye', 'İtem Adı': 'Ancient Assassin Pendant', 'İtem Türü (Rarity)': 'Ancient', 'Seviye': '30', 'HP Bonusu': '20', 'Dexterity Bonus (Çeviklik Bonusu)': '14' },
+      { 'İtem Çeşidi': 'Kolye', 'İtem Adı': 'Ancient Brawler\'s Pendant', 'İtem Türü (Rarity)': 'Ancient', 'Seviye': '30', 'Fiziksel Savunma Bonusu': '12', 'Strength Bonus (Kuvvet Bonusu)': '10', 'HP Bonusu': '30' },
+      { 'İtem Çeşidi': 'Kolye', 'İtem Adı': 'Ancient Cleric\'s Pendant', 'İtem Türü (Rarity)': 'Ancient', 'Seviye': '30', 'Magic Bonus': '14', 'HP Bonusu': '60', 'MP Bonusu': '30' }
     ];
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(sampleData, { header: headers });
-    XLSX.utils.book_append_sheet(wb, ws, 'Items');
-    XLSX.writeFile(wb, 'item_template.xlsx');
+    
+    sampleData.forEach(data => {
+      worksheet.addRow(data);
+    });
+    
+    // Excel dosyasını oluştur ve indir
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'item_template.xlsx';
+    link.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const handleEditItem = (item) => {

@@ -1,5 +1,4 @@
 const db = require('../config/database');
-// Firebase dependency removed as per user request for direct database connection
 
 async function ensureUsersTable() {
   try {
@@ -74,8 +73,6 @@ async function ensureUsersTable() {
   }
 }
 
-// syncUserFromFirebase function removed (Firestore discontinued)
-
 // Kullanıcı profili getirme
 const getProfile = async (req, res) => {
   try {
@@ -116,6 +113,12 @@ async function usersHasEmailColumn() {
 // Kullanıcı profili güncelleme
 const updateProfile = async (req, res) => {
   try {
+    const urlUid = req.params.uid;
+    const loggedInUid = req.user.uid;
+
+    if (urlUid !== loggedInUid) {
+      return res.status(403).json({ error: 'Sadece kendi profilinizi güncelleyebilirsiniz.' });
+    }
 
     const { uid } = req.params;
     const actingUid = String(req.user?.uid || '');

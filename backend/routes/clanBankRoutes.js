@@ -3,6 +3,7 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const clanBankController = require('../controllers/clanBankController');
 const authMiddleware = require('../middleware/auth');
+const clanBankValidator = require('../validators/clanBankValidator');
 
 // Rate Limiter: Banka yazma işlemleri için dakikada max 30 istek
 const writeLimiter = rateLimit({
@@ -21,16 +22,16 @@ router.use(authMiddleware);
 router.get('/:clanId', clanBankController.getClanBank);
 
 // İtem satışı
-router.post('/sell', writeLimiter, clanBankController.sellItem);
+router.post('/sell', writeLimiter, clanBankValidator.sellItem, clanBankController.sellItem);
 
 // Ödeme yap
-router.post('/pay', writeLimiter, clanBankController.payParticipant);
+router.post('/pay', writeLimiter, clanBankValidator.payParticipant, clanBankController.payParticipant);
 
 // Toplu ödeme yap
-router.post('/bulk-pay', writeLimiter, clanBankController.bulkPayParticipant);
+router.post('/bulk-pay', writeLimiter, clanBankValidator.bulkPayParticipant, clanBankController.bulkPayParticipant);
 
 // Manuel item ekle
-router.post('/manual-item', writeLimiter, clanBankController.addManualItem);
+router.post('/manual-item', writeLimiter, clanBankValidator.addManualItem, clanBankController.addManualItem);
 
 // İşlem geçmişi
 router.get('/:clanId/transactions', clanBankController.getTransactions);
@@ -48,6 +49,6 @@ router.post('/debt', writeLimiter, clanBankController.updateClanDebt);
 router.post('/tax', writeLimiter, clanBankController.updateClanTax);
 
 // Hazine işlemleri (Borç öde / Kasaya gönder)
-router.post('/treasury-action', writeLimiter, clanBankController.processTreasuryAction);
+router.post('/treasury-action', writeLimiter, clanBankValidator.processTreasuryAction, clanBankController.processTreasuryAction);
 
 module.exports = router;

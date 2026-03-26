@@ -1,22 +1,16 @@
 import { API_BASE } from './apiConfig';
 
-// Yeni JWT Sistemine Uygun Header Oluşturucu
 const getAuthHeaders = () => {
-  // Yeni sistemde token 'token' anahtarıyla localStorage'da tutuluyor
-  const token = localStorage.getItem('token');
-  const headers = {
+  return {
     'Content-Type': 'application/json',
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
 };
 
 // Genel Fetch Yardımcısı (Kod tekrarını önlemek için)
 const request = async (endpoint, options = {}) => {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
+    credentials: 'include',
     headers: { ...getAuthHeaders(), ...options.headers }
   });
   const data = await response.json().catch(() => ({}));

@@ -169,7 +169,7 @@ export default function App() {
       showNotification("Ayarlar tüm sunucuda güncellendi.", "success");
     } catch (error) {
       console.error("Reklam ayarları kaydedilemedi:", error);
-      showNotification("Reklam ayarları kaydedilemedi! Lütfen yetkili (astral1) olduğunuzdan emin olun.", "error");
+      showNotification("Reklam ayarları kaydedilemedi. Yetkiniz yok.", "error");
     }
   };
 
@@ -353,21 +353,16 @@ export default function App() {
 
   // --- EFFECT 1: AUTHENTICATION ---
   useEffect(() => {
-    // Check for existing JWT token
-    const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
 
-    if (token && user) {
+    if (user) {
       const userData = JSON.parse(user);
       setUser(userData);
-      socketService.connect(userData.uid, token); // Socket bağlan
+      socketService.connect(userData.uid); // Token YOK - Cookie kullanıyor
       console.log('[DEBUG] User logged in with UID:', userData.uid);
-      console.log('[DEBUG] Auth token found in localStorage');
     } else {
-      // Clear token on logout
-      localStorage.removeItem('token');
       localStorage.removeItem('user');
-      socketService.disconnect(); // Socket kopar
+      socketService.disconnect();
       setLoading(false);
     }
   }, []);
