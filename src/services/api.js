@@ -1,17 +1,11 @@
 import { API_BASE } from './apiConfig';
 
-const getAuthHeaders = () => {
-  return {
-    'Content-Type': 'application/json',
-  };
-};
-
 // Genel Fetch Yardımcısı (Kod tekrarını önlemek için)
 const request = async (endpoint, options = {}) => {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     credentials: 'include',
-    headers: { ...getAuthHeaders(), ...options.headers }
+    headers: { 'Content-Type': 'application/json', ...options.headers }
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {

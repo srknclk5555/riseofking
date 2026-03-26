@@ -21,15 +21,19 @@ const initialize = (server) => {
         transports: ['websocket', 'polling']
     });
 
-    // Authentication Middleware - Token-only (Handshake Auth)
+    // Authentication Middleware - Cookie support
     io.use((socket, next) => {
         try {
-            const token = socket.handshake.auth.token;
+            let token = socket.handshake.auth.token;
+            if (!token && socket.handshake.headers.cookie) {
+                const cookies = cookie.parse(socket.handshake.headers.cookie);
+                token = cookies.token;
+            }
             const userId = socket.handshake.auth.userId;
 
             if (!token || !userId) {
                 console.warn('[Socket Auth] Missing token or userId');
-                return next(new Error('Token eksik'));
+                return next(new Error('Token veya UserId eksik'));
             }
 
             // JWT Verify

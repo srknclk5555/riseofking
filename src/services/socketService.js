@@ -12,23 +12,15 @@ class SocketService {
     }
 
     connect(userId) {
-        if (this.socket) {
-            console.log('[SocketService] Already connected.');
-            return;
-        }
-
-        console.log('[SocketService] Connecting with userId:', userId);
+        if (this.socket) return;
         this.userId = userId;
-
         this.socket = io(API_URL, {
-            auth: {
-                userId: userId
-            },
+            auth: { userId: userId },
             withCredentials: true,
             reconnection: true,
             reconnectionAttempts: 10,
             reconnectionDelay: 1000,
-            transports: ['websocket', 'polling'] 
+            transports: ['websocket', 'polling']
         });
 
         this.socket.on('connect', () => {
