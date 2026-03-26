@@ -1,6 +1,6 @@
+const helmet = require('helmet');
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const itemsRouter = require('./routes/items');
 const pool = require('./config/database');
@@ -22,29 +22,13 @@ const PORT = process.env.PORT || 5000;
 // Initialize Socket.io
 socketManager.initialize(server);
 
-// Middleware
-// 🔒 Helmet: Güvenli HTTP headerları + Content Security Policy (XSS'e karşı)
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],                       // Sadece kendi domainden kaynak yükle
-      scriptSrc: ["'self'"],                          // Inline script çalıştırmaya izin verme
-      styleSrc: ["'self'", "'unsafe-inline'"],        // CSS inline'a izin ver (React için)
-      imgSrc: ["'self'", 'data:', 'https:'],          // Resimler: kendi domain + data URL + https
-      connectSrc: ["'self'", 'wss:', 'ws:'],          // WebSocket bağlantılarına izin ver
-      fontSrc: ["'self'", 'https:', 'data:'],
-      objectSrc: ["'none'"],                          // Flash/plugin tamamen engelle
-      upgradeInsecureRequests: [],
-    },
-  },
-  crossOriginEmbedderPolicy: false, // Bazı embed içerikler için gerekli
-}));
 app.use(cors({
-  origin: ['https://riseofking.srknclk78.workers.dev', 'http://localhost:3000'],
+  origin: ['https://lootmetric.com', 'https://www.lootmetric.com', 'https://riseofking.srknclk78.workers.dev', 'http://localhost:3000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+app.use(helmet());
 app.use(express.json({ limit: '1mb' })); // Büyük payload saldırılarını engelle
 
 // 🔒 Global XSS Sanitization: Tüm route'lardan önce çalışır
@@ -97,7 +81,7 @@ server.listen(PORT, async () => {
   try {
     const result = await pool.query('SELECT NOW()');
     console.log('✓ PostgreSQL veritabanına başarıyla bağlandı');
-    
+
     // Initialize schema
     await ensureUsersTable();
     console.log('✓ Veritabanı şeması doğrulandı');
