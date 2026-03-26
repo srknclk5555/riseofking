@@ -365,6 +365,18 @@ export default function App() {
       socketService.disconnect();
       setLoading(false);
     }
+
+    // 🛡️ MERKEZİ AUTH/BAN DİNLEYİCİSİ
+    const handleAuthError = (e) => {
+      const errorMsg = e.detail || 'Oturumunuz sonlandırıldı.';
+      setUser(null);
+      setUserData(null);
+      socketService.disconnect();
+      showNotification(errorMsg, 'error');
+    };
+
+    window.addEventListener('auth-error', handleAuthError);
+    return () => window.removeEventListener('auth-error', handleAuthError);
   }, []);
 
   // --- PHASE 3: REACT QUERY CACHING ---

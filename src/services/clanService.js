@@ -271,6 +271,7 @@ export const clanService = {
       const response = await fetch(url, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -289,6 +290,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clan-boss/runs/${runId}`, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -307,6 +309,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clan-boss/runs/${runId}`, {
         method: 'GET',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -332,6 +335,7 @@ export const clanService = {
           drops: runData.drops,
           screenshotUrl: runData.screenshotUrl
         }),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -351,6 +355,7 @@ export const clanService = {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify({ isPaid }),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -370,6 +375,7 @@ export const clanService = {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify({ isPaid }),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -388,6 +394,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clan-boss/runs/${runId}/self`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -406,6 +413,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clan-boss/runs/${runId}/participants/${participantUserId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -436,6 +444,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clan-boss/runs/${runId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -534,6 +543,7 @@ export const clanService = {
       const response = await fetch(`${API_BASE}/clans/${clanId}/acp/${acpId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
+        credentials: 'include'
       });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

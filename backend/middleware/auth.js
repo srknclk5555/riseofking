@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
+const { isUserQuarantined } = require('../socket/socketManager');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -40,6 +41,16 @@ module.exports = async function authMiddleware(req, res, next) {
 
       if (!userId) {
         return res.status(401).json({ error: 'Token does not contain user id' });
+      }
+
+      // 🛡️ KARANTİNA (BAN) KONTROLÜ
+      if (isUserQuarantined(userId)) {
+        console.warn(`[API DEFANS] Banlı kullanıcı işlem yapmaya çalıştı: ${userId}`);
+        res.clearCookie('token', { httpOnly: true, secure: true, sameSite: 'none' }); // Kullanıcıyı sistemden at
+        return res.status(403).json({ 
+            error: 'Spam nedeniyle 5 dakika uzaklaştırıldınız.',
+            forceLogout: true 
+        });
       }
       
       req.user = { 

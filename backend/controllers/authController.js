@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { isUserQuarantined } = require('../socket/socketManager');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'replace_this_with_real_secret';
 
@@ -107,6 +108,12 @@ const login = async (req, res) => {
     }
 
     const user = result.rows[0];
+
+    // 🛡️ KARANTİNA (BAN) KONTROLÜ
+    if (isUserQuarantined(user.uid)) {
+        console.warn(`[LOGIN DEFANS] Banlı kullanıcı giriş yapmaya çalıştı: ${user.uid}`);
+        return res.status(403).json({ error: 'Spam nedeniyle geçici olarak banlandınız. Lütfen sürenizin dolmasını bekleyin.' });
+    }
 
     // Compare passwords
     const isValidPassword = await bcrypt.compare(password, user.password_hash);

@@ -9,6 +9,17 @@ const request = async (endpoint, options = {}) => {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    // 🛡️ MERKEZİ HATA YÖNETİMİ (Auth/Ban)
+    if (response.status === 401 || (response.status === 403 && data.forceLogout)) {
+      localStorage.removeItem('user');
+      window.dispatchEvent(new CustomEvent('auth-error', { detail: data.error || 'Oturum sonlandırıldı.' }));
+      
+      // Sert yönlendirme (Yedek mekanizma)
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+
     const errorMsg = data?.debug || data?.details || data?.error || data?.message || `HTTP Error: ${response.status}`;
     const error = new Error(errorMsg);
     error.status = response.status;
