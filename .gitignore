@@ -27,3 +27,9 @@ backend/*.json
 backend/scripts/import-firestore-items.js
 backend/scripts/import-items.js
 backend/scripts/import-items-new-structure.js
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
