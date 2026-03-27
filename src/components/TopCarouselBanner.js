@@ -14,6 +14,16 @@ const TopCarouselBanner = ({ ads, interval = 4000, isActive, height = 80 }) => {
     return () => clearInterval(timer);
   }, [isActive, ads, interval]);
 
+  useEffect(() => {
+    if (isActive && ads && ads[currentIndex]?.type === 'adsense') {
+      try {
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+      } catch (e) {
+        console.error("AdSense error (Carousel):", e);
+      }
+    }
+  }, [isActive, ads, currentIndex]);
+
   if (!isActive || !ads || ads.length === 0) return null;
 
   const currentAd = ads[currentIndex];
@@ -27,18 +37,36 @@ const TopCarouselBanner = ({ ads, interval = 4000, isActive, height = 80 }) => {
       style={{ height: `${height}px` }}
     >
       <div className="h-full flex items-center justify-center">
-        <a 
-          href={currentAd.link} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="h-full w-full flex items-center justify-center overflow-hidden"
-        >
-          <img 
-            src={currentAd.image} 
-            alt="Ad" 
-            className="h-full w-full object-contain transition-opacity duration-700 ease-in-out"
-          />
-        </a>
+        {currentAd.type === 'adsense' ? (
+          <div className="h-full w-full flex items-center justify-center overflow-hidden bg-gray-900/30">
+            {currentAd.html ? (
+              <div 
+                className="w-full h-full flex items-center justify-center"
+                dangerouslySetInnerHTML={{ __html: currentAd.html }}
+              />
+            ) : (
+              <ins className="adsbygoogle"
+                   style={{ display: 'block', width: '100%', height: '100%' }}
+                   data-ad-client={currentAd.client || "ca-pub-4814303511298138"}
+                   data-ad-slot={currentAd.slot}
+                   data-ad-format="horizontal"
+                   data-full-width-responsive="true"></ins>
+            )}
+          </div>
+        ) : (
+          <a 
+            href={currentAd.link} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="h-full w-full flex items-center justify-center overflow-hidden"
+          >
+            <img 
+              src={currentAd.image} 
+              alt="Ad" 
+              className="h-full w-full object-contain transition-opacity duration-700 ease-in-out"
+            />
+          </a>
+        )}
       </div>
 
       {/* Navigation Buttons - Only show if more than 1 ad and hovered */}

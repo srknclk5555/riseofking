@@ -1,4 +1,5 @@
 import { API_BASE } from './apiConfig';
+import FingerprintJS from '@fingerprintjs/fingerprintjs';
 
 // Register a new user
 export const register = async (userData) => {
@@ -31,12 +32,17 @@ export const register = async (userData) => {
 // Login user
 export const login = async (credentials) => {
   try {
+    // Get device fingerprint
+    const fp = await FingerprintJS.load();
+    const result = await fp.get();
+    const fingerprint = result.visitorId;
+
     const response = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(credentials),
+      body: JSON.stringify({ ...credentials, fingerprint }),
       credentials: 'include'
     });
 

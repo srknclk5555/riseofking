@@ -85,10 +85,14 @@ const register = async (req, res) => {
 // Login user
 const login = async (req, res) => {
   try {
-    const { email, username, password } = req.body;
+    const { email, username, password, fingerprint } = req.body;
 
     if ((!email && !username) || !password) {
       return res.status(400).json({ error: 'Email/username and password are required' });
+    }
+
+    if (!fingerprint) {
+      return res.status(400).json({ error: 'Device fingerprint is required' });
     }
 
     // Find user by email or username
@@ -115,11 +119,52 @@ const login = async (req, res) => {
         return res.status(403).json({ error: 'Spam nedeniyle geçici olarak banlandınız. Lütfen sürenizin dolmasını bekleyin.' });
     }
 
+    // 🛡️ CİHAZ PARMAK İZİ BAN KONTROLÜ
+    const fingerprintCheck = await db.query(
+      'SELECT is_blocked, ban_until FROM user_fingerprints WHERE fingerprint = $1',
+      [fingerprint]
+    );
+
+    if (fingerprintCheck.rows.length > 0) {
+      const fpData = fingerprintCheck.rows[0];
+      if (fpData.is_blocked) {
+        console.warn(`[FINGERPRINT BAN] Banlı cihaz giriş yapmaya çalıştı: ${fingerprint}`);
+        return res.status(403).json({
+          error: 'Cihazınız kalıcı olarak engellenmiştir.',
+          forceLogout: true
+        });
+      } else if (fpData.ban_until && new Date(fpData.ban_until) > new Date()) {
+        const remainingMs = new Date(fpData.ban_until) - new Date();
+        const remainingMinutes = Math.ceil(remainingMs / (1000 * 60));
+        console.warn(`[FINGERPRINT BAN] Süreli banlı cihaz giriş yapmaya çalıştı: ${fingerprint} - ${remainingMinutes} dakika kaldı`);
+        return res.status(403).json({
+          error: `Cihazınız şüpheli hareket nedeniyle ${remainingMinutes} dakika daha engellidir.`,
+          forceLogout: true
+        });
+      }
+    }
+
     // Compare passwords
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+
+    // Get IP and User-Agent
+    const ipAddress = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    // UPSERT fingerprint data
+    await db.query(`
+      INSERT INTO user_fingerprints (user_id, fingerprint, user_agent, ip_address, last_seen, login_count)
+      VALUES ($1, $2, $3, $4, NOW(), 1)
+      ON CONFLICT (user_id, fingerprint)
+      DO UPDATE SET
+        last_seen = NOW(),
+        login_count = user_fingerprints.login_count + 1,
+        ip_address = EXCLUDED.ip_address,
+        user_agent = EXCLUDED.user_agent
+    `, [user.uid, fingerprint, userAgent, ipAddress]);
 
     // Generate JWT token
     const token = jwt.sign(
