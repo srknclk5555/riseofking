@@ -28,6 +28,7 @@ import FarmPage from './pages/FarmPage';
 import MessagingPage from './pages/MessagingPage';
 import AdminPage from './pages/AdminPage';
 import ClanPage from './pages/ClanPage';
+import PrivacyPage from './pages/PrivacyPage';
 
 // PostgreSQL API Servisleri
 import { itemService, locationService, mobService, farmService, notificationService, gatheringService, eventService, messageService, userService, settingsService } from './services/api';
@@ -725,6 +726,8 @@ export default function App() {
                 <NavButton icon={<MapPin />} label="Sistem" active={activeTab === "System"} onClick={() => setActiveTab("System")} />
               )}
               
+              <NavButton icon={<Shield className="text-blue-400" />} label="Gizlilik Politikası" active={activeTab === "Privacy"} onClick={() => setActiveTab("Privacy")} />
+              
               {/* Yan Menü Reklamı */}
               <ManualBanner adConfig={{ ...adSettings.sidebarAd, isActive: adSettings.visibility.sidebar }} />
             </nav>
@@ -852,6 +855,7 @@ export default function App() {
             />
           )}
           {activeTab === "System" && <SystemPage userData={userData} uid={user.uid} showNotification={showNotification} checkRateLimit={checkRateLimit} />}
+          {activeTab === "Privacy" && <PrivacyPage />}
         </div>
       </main>
     </div>

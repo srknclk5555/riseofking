@@ -4,10 +4,6 @@ import { ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 const VerticalBanner = ({ adConfig, position = 'left' }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  if (!adConfig || !adConfig.isActive) return null;
-
-  const toggleCollapse = () => setIsCollapsed(!isCollapsed);
-
   useEffect(() => {
     if (adConfig && adConfig.isActive && adConfig.type === 'adsense') {
       try {
@@ -17,6 +13,10 @@ const VerticalBanner = ({ adConfig, position = 'left' }) => {
       }
     }
   }, [adConfig]);
+
+  if (!adConfig || !adConfig.isActive) return null;
+
+  const toggleCollapse = () => setIsCollapsed(!isCollapsed);
 
   const getContainerStyle = () => {
     let style = "hidden xl:block fixed top-24 bottom-4 w-28 lg:w-32 z-40 transition-all duration-500 ease-in-out ";
