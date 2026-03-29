@@ -28,6 +28,7 @@ import FarmPage from './pages/FarmPage';
 import MessagingPage from './pages/MessagingPage';
 import AdminPage from './pages/AdminPage';
 import ClanPage from './pages/ClanPage';
+import LandingPage from './pages/LandingPage';
 import PrivacyPage from './pages/PrivacyPage';
 
 // PostgreSQL API Servisleri
@@ -39,6 +40,7 @@ import clanBossService from './services/clanBossService';
 import ManualBanner from './components/ManualBanner';
 import TopCarouselBanner from './components/TopCarouselBanner';
 import VerticalBanner from './components/VerticalBanner';
+import ThemeSwitcher, { getStoredTheme, applyTheme } from './components/ThemeSwitcher';
 
 // --- APP ID ---
 const staticAppId = "rise_online_tracker_app";
@@ -91,8 +93,16 @@ export const validateClanMessageAccess = (message, clan, userId) => {
 };
 // --- ANA BİLEŞEN ---
 export default function App() {
+  // Tema başlatma
+  useEffect(() => {
+    applyTheme(getStoredTheme());
+  }, []);
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState("Dashboard");
+  const [selectedSubTab, setSelectedSubTab] = useState('summary');
+  const [showAuth, setShowAuth] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [selectedDate, setSelectedDate] = useState(formatDate(new Date()));
   const [loading, setLoading] = useState(true);
   const queryClient = useQueryClient();
@@ -366,18 +376,6 @@ export default function App() {
       socketService.disconnect();
       setLoading(false);
     }
-
-    // 🛡️ MERKEZİ AUTH/BAN DİNLEYİCİSİ
-    const handleAuthError = (e) => {
-      const errorMsg = e.detail || 'Oturumunuz sonlandırıldı.';
-      setUser(null);
-      setUserData(null);
-      socketService.disconnect();
-      showNotification(errorMsg, 'error');
-    };
-
-    window.addEventListener('auth-error', handleAuthError);
-    return () => window.removeEventListener('auth-error', handleAuthError);
   }, []);
 
   // --- PHASE 3: REACT QUERY CACHING ---
@@ -696,7 +694,43 @@ export default function App() {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   if (loading) return <div className="h-screen bg-gray-900 flex items-center justify-center text-yellow-500 font-bold text-2xl animate-pulse">VERİLER YÜKLENİYOR...</div>;
-  if (!user) return <AuthScreen />;
+  
+  if (!user) {
+    if (showPrivacy) {
+      return (
+        <div className="flex flex-col h-screen bg-gray-900">
+           <div className="p-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
+              <span className="font-bold text-white tracking-widest uppercase text-sm">Gizlilik Politikası</span>
+              <button 
+                onClick={() => setShowPrivacy(false)}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all"
+              >
+                Geri Dön
+              </button>
+           </div>
+           <PrivacyPage />
+        </div>
+      );
+    }
+
+    if (!showAuth) {
+      return (
+        <LandingPage 
+          onLogin={() => { setShowAuth(true); setIsRegistering(false); }}
+          onRegister={() => { setShowAuth(true); setIsRegistering(true); }}
+          onViewPrivacy={() => setShowPrivacy(true)}
+        />
+      );
+    }
+    return (
+      <AuthScreen 
+        initialRegister={isRegistering} 
+        onBack={() => setShowAuth(false)}
+        onViewPrivacy={() => setShowPrivacy(true)}
+      />
+    );
+  }
+  
   if (!userData) return <div className="h-screen bg-gray-900 flex items-center justify-center text-white">Profil verisi bekleniyor...</div>;
 
   return (
@@ -725,8 +759,6 @@ export default function App() {
               {userData?.username === 'astral1' && (
                 <NavButton icon={<MapPin />} label="Sistem" active={activeTab === "System"} onClick={() => setActiveTab("System")} />
               )}
-              
-              <NavButton icon={<Shield className="text-blue-400" />} label="Gizlilik Politikası" active={activeTab === "Privacy"} onClick={() => setActiveTab("Privacy")} />
               
               {/* Yan Menü Reklamı */}
               <ManualBanner adConfig={{ ...adSettings.sidebarAd, isActive: adSettings.visibility.sidebar }} />
@@ -816,6 +848,8 @@ export default function App() {
             )}
 
             <div className="w-px h-6 bg-gray-700"></div>
+            <ThemeSwitcher />
+            <div className="w-px h-6 bg-gray-700"></div>
             <button onClick={() => { authService.logout(); socketService.disconnect(); window.location.reload(); }} className="flex items-center gap-2 text-red-400 hover:text-red-300"><LogOut size={18} /><span className="hidden md:inline text-sm">Çıkış</span></button>
           </div>
         </header>
@@ -855,7 +889,6 @@ export default function App() {
             />
           )}
           {activeTab === "System" && <SystemPage userData={userData} uid={user.uid} showNotification={showNotification} checkRateLimit={checkRateLimit} />}
-          {activeTab === "Privacy" && <PrivacyPage />}
         </div>
       </main>
     </div>
@@ -866,7 +899,7 @@ export default function App() {
     <div
       id="item-tooltip"
       ref={tooltipRef}
-      className="fixed w-[320px] bg-gray-900 border border-gray-600 shadow-[0_0_30px_rgba(0,0,0,0.9)] backdrop-blur-md rounded-lg p-5 pointer-events-none transition-opacity duration-100 z-[1000]"
+      className="item-tooltip fixed w-[320px] bg-[#0f172a] border border-[#334155] shadow-[0_20px_50px_rgba(0,0,0,0.9)] backdrop-blur-3xl rounded-xl p-5 pointer-events-none transition-opacity duration-100 z-[1000]"
       style={{
         opacity: tooltipVisible ? 1 : 0,
         left: '-1000px', // İlk render'da dışarıda kalsın, useLayoutEffect hemen düzeltecek
@@ -992,8 +1025,8 @@ export default function App() {
 }
 
 // --- AuthScreen, NavButton, Dashboard, GatheringPage, EventsPage (Değişmedi) ---
-const AuthScreen = () => {
-  const [isRegister, setIsRegister] = useState(false);
+const AuthScreen = ({ initialRegister = false, onBack, onViewPrivacy }) => {
+  const [isRegister, setIsRegister] = useState(initialRegister);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -1046,8 +1079,14 @@ const AuthScreen = () => {
           <input type="text" value={username} onChange={e => setUsername(e.target.value.toLowerCase())} className="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white" placeholder="Kullanıcı Adı" required />
           <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white" placeholder="Şifre" required />
           {error && <div className="text-red-400 text-sm">{error}</div>}
-          <button type="submit" disabled={loading} className="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded font-bold">{loading ? '...' : (isRegister ? 'Kayıt Ol' : 'Giriş Yap')}</button>
+          <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/40">{loading ? '...' : (isRegister ? 'Hemen Kayıt Ol' : 'Giriş Yap')}</button>
         </form>
+        <div className="mt-8 pt-8 border-t border-gray-700 flex flex-col gap-4 text-center">
+           <button onClick={onViewPrivacy} className="text-gray-400 hover:text-blue-400 text-xs transition-colors">Gizlilik Politikası</button>
+           <button onClick={onBack} className="text-gray-500 hover:text-white text-sm flex items-center justify-center gap-2 group transition-all">
+              <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Sayfaya Geri Dön
+           </button>
+        </div>
       </div>
     </div>
   );

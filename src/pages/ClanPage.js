@@ -144,6 +144,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [messageFilters, setMessageFilters] = useState({ text: '', sender: '', startDate: '', endDate: '' });
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = React.useRef(null);
+  const [clanTypingUsers, setClanTypingUsers] = useState([]);
+  const clanTypingTimeoutRef = React.useRef(null);
 
   // Clan Boss States
   const [clanBossRuns, setClanBossRuns] = useState([]);
@@ -216,8 +218,39 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     };
 
     const handleMessageReceived = (msg) => {
-      console.log('[Socket] Message received, invalidating...');
+      console.log('[Socket] Clan Message received:', msg);
+      
+      // Update React Query Cache immediately
+      queryClient.setQueriesData({ queryKey: ['clanMessages'] }, (oldData) => {
+        if (!Array.isArray(oldData)) return oldData;
+        if (oldData.some(m => m.id === msg.id)) return oldData;
+        return [...oldData, msg];
+      });
+      
+      // Update Local State directly for instant UI refresh
+      setMessages(prev => {
+        if (!Array.isArray(prev)) return prev;
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+
+      // Background refetch
       queryClient.invalidateQueries({ queryKey: ['clanMessages', clanId] });
+      setTimeout(scrollToBottom, 100);
+    };
+
+    const handleClanTyping = ({ senderId, username }) => {
+      if (senderId === uid) return;
+      setClanTypingUsers(prev => {
+        if (!prev.find(u => u.id === senderId)) {
+          return [...prev, { id: senderId, username }];
+        }
+        return prev;
+      });
+    };
+
+    const handleStopClanTyping = ({ senderId }) => {
+      setClanTypingUsers(prev => prev.filter(u => u.id !== senderId));
     };
 
     const handleClanUpdate = () => {
@@ -225,11 +258,14 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       queryClient.invalidateQueries({ queryKey: ['userClans', uid] });
     };
 
+    // Dinleyicileri kaydet
     socketService.on('CLAN_BOSS_RUN_UPDATED', handleBossRunUpdate);
     socketService.on('CLAN_BANK_UPDATED', handleBankUpdate);
     socketService.on('CLAN_MEMBER_UPDATED', handleMemberUpdate);
     socketService.on('CLAN_MESSAGE_RECEIVED', handleMessageReceived);
     socketService.on('CLAN_UPDATED', handleClanUpdate);
+    socketService.on('typing_clan', handleClanTyping);
+    socketService.on('stop_typing_clan', handleStopClanTyping);
 
     return () => {
       console.log(`[Socket] Leaving clan room: ${clanId}`);
@@ -239,6 +275,8 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       socketService.off('CLAN_MEMBER_UPDATED');
       socketService.off('CLAN_MESSAGE_RECEIVED');
       socketService.off('CLAN_UPDATED');
+      socketService.off('typing_clan');
+      socketService.off('stop_typing_clan');
     };
   }, [selectedClan?.id, queryClient, uid]);
 
@@ -248,6 +286,16 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
   const [bulkPaymentRuns, setBulkPaymentRuns] = useState([]);
   const [selectedBulkRuns, setSelectedBulkRuns] = useState(new Set());
   const [customBulkAmount, setCustomBulkAmount] = useState('');
+
+  // Helper: Resoluve Nickname from clanMembers
+  const getSenderName = (msg) => {
+    if (msg.sender_id === uid) return 'Siz';
+    // Look in current klan members
+    const member = clanMembers.find(m => m.user_id === msg.sender_id);
+    if (member) return member.nickname || member.display_name || member.username;
+    // Fallback to backend-provided display name or username
+    return msg.sender_display_name || msg.username || 'Bilinmeyen';
+  };
   const [isBulkLoading, setIsBulkLoading] = useState(false);
 
   // Clan Debt & Tax States
@@ -704,6 +752,26 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
     }
   };
 
+  const handleTyping = (e) => {
+    setNewMessage(e.target.value);
+    
+    if (socketService && selectedClan?.id) {
+      if (!clanTypingTimeoutRef.current) {
+        socketService.emit('typing_clan', { 
+            clanId: selectedClan.id, 
+            username: userData?.nickname || userData?.username || 'Üye' 
+        });
+      } else {
+        clearTimeout(clanTypingTimeoutRef.current);
+      }
+      
+      clanTypingTimeoutRef.current = setTimeout(() => {
+        socketService.emit('stop_typing_clan', { clanId: selectedClan.id });
+        clanTypingTimeoutRef.current = null;
+      }, 5000); // 5 saniyeye çıkarıldı
+    }
+  };
+
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || isSending) return;
@@ -712,6 +780,16 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
       setIsSending(true);
       await clanService.sendClanMessage(selectedClan.id, newMessage);
       setNewMessage('');
+      
+      // Stop typing immediately after sending
+      if (socketService && selectedClan?.id) {
+        socketService.emit('stop_typing_clan', { clanId: selectedClan.id });
+        if (clanTypingTimeoutRef.current) {
+          clearTimeout(clanTypingTimeoutRef.current);
+          clanTypingTimeoutRef.current = null;
+        }
+      }
+
       // Mesaj gönderildikten hemen sonra listeyi yenile (sessizce)
       await fetchClanMessages(messageFilters, true);
     } catch (error) {
@@ -3288,7 +3366,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                       <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                         <div className={`max-w-[80%] ${isMe ? 'bg-indigo-600/90' : 'bg-gray-800'} rounded-2xl px-4 py-2 shadow-lg border ${isMe ? 'border-indigo-500/50' : 'border-gray-700'}`}>
                           <div className={`text-[10px] font-black mb-1 uppercase tracking-tighter flex justify-between gap-4 ${isMe ? 'text-indigo-200' : getUserColor(msg.sender_id)}`}>
-                            <span>{isMe ? 'Siz' : (msg.sender_display_name || 'Bilinmeyen')}</span>
+                            <span>{getSenderName(msg)}</span>
                           </div>
                           <div className="text-sm text-white break-words leading-relaxed">
                             {msg.text}
@@ -3305,12 +3383,19 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
               </div>
 
               {/* Message Input */}
-              <form onSubmit={handleSendMessage} className="p-4 bg-gray-800/80 border-t border-gray-700 flex gap-3">
-                <input
-                  type="text"
-                  placeholder="Mesajınızı yazın..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+              <div className="relative">
+                {/* Clan Typing Indicator */}
+                {clanTypingUsers.length > 0 && (
+                  <div className="absolute -top-7 left-4 text-[10px] italic text-indigo-400 font-bold bg-gray-900 border border-b-0 border-gray-700 px-3 py-1 rounded-t-lg z-10 shadow-lg">
+                    {clanTypingUsers.map(u => u.username).join(', ')} {clanTypingUsers.length > 1 ? 'yazıyorlar...' : 'yazıyor...'}
+                  </div>
+                )}
+                <form onSubmit={handleSendMessage} className="relative p-4 bg-gray-800/80 border-t border-gray-700 flex gap-3 z-20">
+                  <input
+                    type="text"
+                    placeholder="Mesajınızı yazın..."
+                    value={newMessage}
+                    onChange={handleTyping}
                   disabled={isSending}
                   className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                 />
@@ -3323,6 +3408,7 @@ const ClanPage = ({ userData, uid, showNotification, showTooltip, hideTooltip })
                 </button>
               </form>
             </div>
+          </div>
           </div>
         )}
         {activeTab === 'reports' && renderReportsTab()}

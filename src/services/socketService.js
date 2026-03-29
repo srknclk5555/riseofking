@@ -9,6 +9,7 @@ class SocketService {
         this.socket = null;
         this.userId = null;
         this.pendingListeners = []; // Socket oluşmadan gelen listenerlar için kuyruk
+        this.pendingEmits = []; // Socket oluşmadan/bağlanmadan gelen emitler için kuyruk
     }
 
     connect(userId) {
@@ -26,6 +27,7 @@ class SocketService {
         this.socket.on('connect', () => {
             console.log('[SocketService] Connected! Socket ID:', this.socket.id);
             this._flushPendingListeners();
+            this._flushPendingEmits();
         });
 
         this.socket.on('connect_error', (err) => {
@@ -53,6 +55,17 @@ class SocketService {
             this.socket.on(event, callback);
         });
         this.pendingListeners = [];
+    }
+
+    _flushPendingEmits() {
+        if (!this.socket || !this.socket.connected) return;
+        if (this.pendingEmits.length > 0) {
+            console.log(`[SocketService] Flushing ${this.pendingEmits.length} pending emits...`);
+            this.pendingEmits.forEach(({ event, data }) => {
+                this.socket.emit(event, data);
+            });
+            this.pendingEmits = [];
+        }
     }
 
     disconnect() {
@@ -90,7 +103,8 @@ class SocketService {
             this.socket.emit(event, data);
             console.log(`[SocketService] Emitted: ${event}`, data);
         } else {
-            console.warn(`[SocketService] Cannot emit "${event}". Socket not connected.`);
+            console.log(`[SocketService] Socket not connected. Queuing "${event}"...`);
+            this.pendingEmits.push({ event, data });
         }
     }
 }

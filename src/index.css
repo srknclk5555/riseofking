@@ -15,3 +15,297 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* ============================================================
+   TEMA SİSTEMİ — CSS Variable Override Yöntemi
+   data-theme="dark"     → Mevcut karanlık tema (varsayılan)
+   data-theme="midnight" → Geceleri gece moru
+   data-theme="ocean"    → Okyanus mavisi
+   data-theme="forest"   → Orman yeşili  
+   data-theme="rose"     → Kızıl gün batımı
+   ============================================================ */
+
+/* ------- TEMA 1: DARK (Mevcut / Varsayılan) ------- */
+/* Tailwind varsayılan renkleri kullanıldığı için override gerekmez */
+[data-theme="dark"] {
+  --accent: #d97706;
+  --accent-hover: #b45309;
+  --accent-soft: rgba(217,119,6,0.2);
+}
+
+/* ------- TEMA 2: MIDNIGHT (Gece Moru) ------- */
+[data-theme="midnight"] {
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-soft: rgba(124,58,237,0.2);
+}
+
+/* bg-gray-900 → koyu mor zemin */
+[data-theme="midnight"] .bg-gray-900 { background-color: #0d0d1a !important; }
+[data-theme="midnight"] .bg-gray-800 { background-color: #1a1a2e !important; }
+[data-theme="midnight"] .bg-gray-750 { background-color: #1e1e35 !important; }
+[data-theme="midnight"] .bg-gray-700 { background-color: #252545 !important; }
+[data-theme="midnight"] .bg-gray-600 { background-color: #303060 !important; }
+
+/* border renkleri */
+[data-theme="midnight"] .border-gray-700 { border-color: #2d2d55 !important; }
+[data-theme="midnight"] .border-gray-600 { border-color: #3a3a68 !important; }
+
+/* bg opacity variants */
+[data-theme="midnight"] .bg-gray-900\/50 { background-color: rgba(13,13,26,0.5) !important; }
+[data-theme="midnight"] .bg-gray-900\/40 { background-color: rgba(13,13,26,0.4) !important; }
+[data-theme="midnight"] .bg-gray-700\/50 { background-color: rgba(37,37,69,0.5) !important; }
+[data-theme="midnight"] .bg-gray-700\/30 { background-color: rgba(37,37,69,0.3) !important; }
+
+/* text renkleri */
+[data-theme="midnight"] .text-yellow-500 { color: #a78bfa !important; }
+[data-theme="midnight"] .text-yellow-400 { color: #c4b5fd !important; }
+[data-theme="midnight"] .text-yellow-600 { color: #7c3aed !important; }
+[data-theme="midnight"] .bg-yellow-600 { background-color: #7c3aed !important; }
+[data-theme="midnight"] .bg-yellow-700 { background-color: #6d28d9 !important; }
+[data-theme="midnight"] .hover\:bg-yellow-700:hover { background-color: #6d28d9 !important; }
+[data-theme="midnight"] .border-yellow-500 { border-color: #7c3aed !important; }
+[data-theme="midnight"] .border-yellow-500\/50 { border-color: rgba(124,58,237,0.5) !important; }
+[data-theme="midnight"] .bg-yellow-600\/20 { background-color: rgba(124,58,237,0.2) !important; }
+[data-theme="midnight"] .shadow-\[0_0_15px_rgba\(245\,158\,11\,0\.15\)\] { box-shadow: 0 0 15px rgba(124,58,237,0.2) !important; }
+
+/* NavButton active state */
+[data-theme="midnight"] .bg-yellow-500\/10 { background-color: rgba(124,58,237,0.15) !important; }
+
+/* Hover düğmesi arka planı */
+[data-theme="midnight"] .hover\:bg-gray-800:hover { background-color: #1a1a2e !important; }
+[data-theme="midnight"] .hover\:bg-gray-700:hover { background-color: #252545 !important; }
+[data-theme="midnight"] .hover\:bg-gray-600:hover { background-color: #303060 !important; }
+
+/* scrollbar */
+[data-theme="midnight"] .custom-scrollbar::-webkit-scrollbar-track { background: #0d0d1a; }
+[data-theme="midnight"] .custom-scrollbar::-webkit-scrollbar-thumb { background: #252545; }
+
+/* ------- TEMA 3: OCEAN (Okyanus) ------- */
+[data-theme="ocean"] {
+  --accent: #0ea5e9;
+  --accent-hover: #0284c7;
+  --accent-soft: rgba(14,165,233,0.2);
+}
+
+[data-theme="ocean"] .bg-gray-900 { background-color: #0a1628 !important; }
+[data-theme="ocean"] .bg-gray-800 { background-color: #0f2342 !important; }
+[data-theme="ocean"] .bg-gray-750 { background-color: #102848 !important; }
+[data-theme="ocean"] .bg-gray-700 { background-color: #143060 !important; }
+[data-theme="ocean"] .bg-gray-600 { background-color: #1a3d78 !important; }
+
+[data-theme="ocean"] .border-gray-700 { border-color: #1a3060 !important; }
+[data-theme="ocean"] .border-gray-600 { border-color: #20408a !important; }
+
+[data-theme="ocean"] .bg-gray-900\/50 { background-color: rgba(10,22,40,0.5) !important; }
+[data-theme="ocean"] .bg-gray-900\/40 { background-color: rgba(10,22,40,0.4) !important; }
+[data-theme="ocean"] .bg-gray-700\/50 { background-color: rgba(20,48,96,0.5) !important; }
+[data-theme="ocean"] .bg-gray-700\/30 { background-color: rgba(20,48,96,0.3) !important; }
+
+[data-theme="ocean"] .text-yellow-500 { color: #38bdf8 !important; }
+[data-theme="ocean"] .text-yellow-400 { color: #7dd3fc !important; }
+[data-theme="ocean"] .text-yellow-600 { color: #0ea5e9 !important; }
+[data-theme="ocean"] .bg-yellow-600 { background-color: #0ea5e9 !important; }
+[data-theme="ocean"] .bg-yellow-700 { background-color: #0284c7 !important; }
+[data-theme="ocean"] .hover\:bg-yellow-700:hover { background-color: #0284c7 !important; }
+[data-theme="ocean"] .border-yellow-500 { border-color: #0ea5e9 !important; }
+[data-theme="ocean"] .border-yellow-500\/50 { border-color: rgba(14,165,233,0.5) !important; }
+[data-theme="ocean"] .bg-yellow-600\/20 { background-color: rgba(14,165,233,0.2) !important; }
+[data-theme="ocean"] .shadow-\[0_0_15px_rgba\(245\,158\,11\,0\.15\)\] { box-shadow: 0 0 15px rgba(14,165,233,0.2) !important; }
+
+[data-theme="ocean"] .bg-yellow-500\/10 { background-color: rgba(14,165,233,0.15) !important; }
+
+[data-theme="ocean"] .hover\:bg-gray-800:hover { background-color: #0f2342 !important; }
+[data-theme="ocean"] .hover\:bg-gray-700:hover { background-color: #143060 !important; }
+[data-theme="ocean"] .hover\:bg-gray-600:hover { background-color: #1a3d78 !important; }
+
+[data-theme="ocean"] .custom-scrollbar::-webkit-scrollbar-track { background: #0a1628; }
+[data-theme="ocean"] .custom-scrollbar::-webkit-scrollbar-thumb { background: #143060; }
+
+/* ------- TEMA 4: FOREST (Orman Yeşili) ------- */
+[data-theme="forest"] {
+  --accent: #16a34a;
+  --accent-hover: #15803d;
+  --accent-soft: rgba(22,163,74,0.2);
+}
+
+[data-theme="forest"] .bg-gray-900 { background-color: #0a1a0a !important; }
+[data-theme="forest"] .bg-gray-800 { background-color: #0f2d0f !important; }
+[data-theme="forest"] .bg-gray-750 { background-color: #123212 !important; }
+[data-theme="forest"] .bg-gray-700 { background-color: #163c16 !important; }
+[data-theme="forest"] .bg-gray-600 { background-color: #1c4e1c !important; }
+
+[data-theme="forest"] .border-gray-700 { border-color: #1a3c1a !important; }
+[data-theme="forest"] .border-gray-600 { border-color: #225022 !important; }
+
+[data-theme="forest"] .bg-gray-900\/50 { background-color: rgba(10,26,10,0.5) !important; }
+[data-theme="forest"] .bg-gray-900\/40 { background-color: rgba(10,26,10,0.4) !important; }
+[data-theme="forest"] .bg-gray-700\/50 { background-color: rgba(22,60,22,0.5) !important; }
+[data-theme="forest"] .bg-gray-700\/30 { background-color: rgba(22,60,22,0.3) !important; }
+
+[data-theme="forest"] .text-yellow-500 { color: #4ade80 !important; }
+[data-theme="forest"] .text-yellow-400 { color: #86efac !important; }
+[data-theme="forest"] .text-yellow-600 { color: #16a34a !important; }
+[data-theme="forest"] .bg-yellow-600 { background-color: #16a34a !important; }
+[data-theme="forest"] .bg-yellow-700 { background-color: #15803d !important; }
+[data-theme="forest"] .hover\:bg-yellow-700:hover { background-color: #15803d !important; }
+[data-theme="forest"] .border-yellow-500 { border-color: #16a34a !important; }
+[data-theme="forest"] .border-yellow-500\/50 { border-color: rgba(22,163,74,0.5) !important; }
+[data-theme="forest"] .bg-yellow-600\/20 { background-color: rgba(22,163,74,0.2) !important; }
+[data-theme="forest"] .shadow-\[0_0_15px_rgba\(245\,158\,11\,0\.15\)\] { box-shadow: 0 0 15px rgba(22,163,74,0.2) !important; }
+
+[data-theme="forest"] .bg-yellow-500\/10 { background-color: rgba(22,163,74,0.15) !important; }
+
+[data-theme="forest"] .hover\:bg-gray-800:hover { background-color: #0f2d0f !important; }
+[data-theme="forest"] .hover\:bg-gray-700:hover { background-color: #163c16 !important; }
+[data-theme="forest"] .hover\:bg-gray-600:hover { background-color: #1c4e1c !important; }
+
+[data-theme="forest"] .custom-scrollbar::-webkit-scrollbar-track { background: #0a1a0a; }
+[data-theme="forest"] .custom-scrollbar::-webkit-scrollbar-thumb { background: #163c16; }
+
+/* ------- TEMA 5: ROSE (Kızıl Gün Batımı) ------- */
+[data-theme="rose"] {
+  --accent: #e11d48;
+  --accent-hover: #be123c;
+  --accent-soft: rgba(225,29,72,0.2);
+}
+
+[data-theme="rose"] .bg-gray-900 { background-color: #1a0a0e !important; }
+[data-theme="rose"] .bg-gray-800 { background-color: #2d0f18 !important; }
+[data-theme="rose"] .bg-gray-750 { background-color: #34121c !important; }
+[data-theme="rose"] .bg-gray-700 { background-color: #3f1525 !important; }
+[data-theme="rose"] .bg-gray-600 { background-color: #521c31 !important; }
+
+[data-theme="rose"] .border-gray-700 { border-color: #3f1525 !important; }
+[data-theme="rose"] .border-gray-600 { border-color: #521c31 !important; }
+
+[data-theme="rose"] .bg-gray-900\/50 { background-color: rgba(26,10,14,0.5) !important; }
+[data-theme="rose"] .bg-gray-900\/40 { background-color: rgba(26,10,14,0.4) !important; }
+[data-theme="rose"] .bg-gray-700\/50 { background-color: rgba(63,21,37,0.5) !important; }
+[data-theme="rose"] .bg-gray-700\/30 { background-color: rgba(63,21,37,0.3) !important; }
+
+[data-theme="rose"] .text-yellow-500 { color: #fb7185 !important; }
+[data-theme="rose"] .text-yellow-400 { color: #fda4af !important; }
+[data-theme="rose"] .text-yellow-600 { color: #e11d48 !important; }
+[data-theme="rose"] .bg-yellow-600 { background-color: #e11d48 !important; }
+[data-theme="rose"] .bg-yellow-700 { background-color: #be123c !important; }
+[data-theme="rose"] .hover\:bg-yellow-700:hover { background-color: #be123c !important; }
+[data-theme="rose"] .border-yellow-500 { border-color: #e11d48 !important; }
+[data-theme="rose"] .border-yellow-500\/50 { border-color: rgba(225,29,72,0.5) !important; }
+[data-theme="rose"] .bg-yellow-600\/20 { background-color: rgba(225,29,72,0.2) !important; }
+[data-theme="rose"] .shadow-\[0_0_15px_rgba\(245\,158\,11\,0\.15\)\] { box-shadow: 0 0 15px rgba(225,29,72,0.2) !important; }
+
+[data-theme="rose"] .bg-yellow-500\/10 { background-color: rgba(225,29,72,0.15) !important; }
+
+[data-theme="rose"] .hover\:bg-gray-800:hover { background-color: #2d0f18 !important; }
+[data-theme="rose"] .hover\:bg-gray-700:hover { background-color: #3f1525 !important; }
+[data-theme="rose"] .hover\:bg-gray-600:hover { background-color: #521c31 !important; }
+
+[data-theme="rose"] .custom-scrollbar::-webkit-scrollbar-track { background: #1a0a0e; }
+[data-theme="rose"] .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f1525; }
+
+/* ------- SCROLLBAR - Global ------- */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #111827;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* ------- TEMA 7: DARK SAAS (Glassmorphism & Slate/Blue) ------- */
+[data-theme="dark-saas"] {
+  --bg-800: rgba(15, 23, 42, 0.75);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --dropdown-hover: rgba(255, 255, 255, 0.08);
+  --dropdown-active: rgba(255, 255, 255, 0.15);
+  --dropdown-outline: rgba(255, 255, 255, 0.2);
+  color-scheme: dark;
+}
+
+/* Derin Slate Arka Plan + Radial Gradient */
+[data-theme="dark-saas"] .bg-gray-900 { 
+  background: radial-gradient(circle at top center, #0f172a 0%, #020617 100%) !important;
+  background-attachment: fixed !important;
+}
+
+/* Glassmorphism Menüler ve Kartlar */
+[data-theme="dark-saas"] .bg-gray-800,
+[data-theme="dark-saas"] .bg-gray-750 { 
+  background-color: rgba(30, 41, 59, 0.45) !important; 
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.2) !important;
+}
+[data-theme="dark-saas"] .bg-gray-700 { background-color: rgba(51, 65, 85, 0.5) !important; }
+[data-theme="dark-saas"] .bg-gray-600 { background-color: rgba(71, 85, 105, 0.6) !important; }
+
+[data-theme="dark-saas"] .bg-gray-900\/80 { background-color: rgba(2, 6, 23, 0.8) !important; }
+[data-theme="dark-saas"] .bg-gray-900\/50,
+[data-theme="dark-saas"] .bg-gray-900\/40 { background-color: rgba(2, 6, 23, 0.5) !important; }
+[data-theme="dark-saas"] .bg-gray-900\/30 { background-color: rgba(2, 6, 23, 0.3) !important; }
+
+[data-theme="dark-saas"] .bg-gray-800\/80 { background-color: rgba(30, 41, 59, 0.6) !important; backdrop-filter: blur(12px) !important; }
+[data-theme="dark-saas"] .bg-gray-800\/50 { background-color: rgba(30, 41, 59, 0.4) !important; backdrop-filter: blur(8px) !important; }
+
+[data-theme="dark-saas"] .bg-gray-700\/50,
+[data-theme="dark-saas"] .bg-gray-700\/30 { background-color: rgba(30, 41, 59, 0.4) !important; backdrop-filter: blur(8px) !important; }
+
+/* Ince Glass Kenarlıklar */
+[data-theme="dark-saas"] .border-gray-700 { border-color: rgba(255, 255, 255, 0.08) !important; }
+[data-theme="dark-saas"] .border-gray-600 { border-color: rgba(255, 255, 255, 0.12) !important; }
+[data-theme="dark-saas"] .border-gray-800 { border-color: rgba(255, 255, 255, 0.05) !important; }
+[data-theme="dark-saas"] .border-gray-700\/50 { border-color: rgba(255, 255, 255, 0.05) !important; }
+[data-theme="dark-saas"] .border-gray-700\/30 { border-color: rgba(255, 255, 255, 0.03) !important; }
+[data-theme="dark-saas"] .border-gray-600\/50 { border-color: rgba(255, 255, 255, 0.08) !important; }
+
+[data-theme="dark-saas"] .divide-gray-700\/50 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(255, 255, 255, 0.05) !important; }
+
+/* Slate Text */
+[data-theme="dark-saas"] .text-gray-100,
+[data-theme="dark-saas"] .text-white { color: #f8fafc !important; } /* Slate 50 */
+[data-theme="dark-saas"] .text-gray-200 { color: #f1f5f9 !important; }
+
+[data-theme="dark-saas"] .text-gray-300 { color: #cbd5e1 !important; } /* Slate 300 */
+[data-theme="dark-saas"] .text-gray-400 { color: #94a3b8 !important; } /* Slate 400 */
+[data-theme="dark-saas"] .text-gray-500 { color: #64748b !important; } /* Slate 500 */
+
+/* Teknolojik Mavi (Blue) Vurgu Renkleri */
+[data-theme="dark-saas"] .text-yellow-500,
+[data-theme="dark-saas"] .text-yellow-400 { color: #3b82f6 !important; } /* Blue 500 */
+[data-theme="dark-saas"] .text-yellow-600 { color: #2563eb !important; } /* Blue 600 */
+[data-theme="dark-saas"] .bg-yellow-600 { 
+  background-color: rgba(59, 130, 246, 0.85) !important; 
+  box-shadow: 0 0 15px rgba(59,130,246,0.25) !important;
+  border: 1px solid rgba(96,165,250,0.3) !important;
+  backdrop-filter: blur(4px);
+}
+[data-theme="dark-saas"] .bg-yellow-700 { background-color: #2563eb !important; }
+[data-theme="dark-saas"] .hover\:bg-yellow-700:hover { background-color: #1d4ed8 !important; }
+[data-theme="dark-saas"] .border-yellow-500 { border-color: #3b82f6 !important; }
+[data-theme="dark-saas"] .border-yellow-500\/50 { border-color: rgba(59,130,246,0.5) !important; }
+[data-theme="dark-saas"] .bg-yellow-600\/20 { background-color: rgba(59,130,246,0.15) !important; }
+[data-theme="dark-saas"] .shadow-\[0_0_15px_rgba\(245\,158\,11\,0\.15\)\] { box-shadow: 0 0 15px rgba(59,130,246,0.15) !important; }
+[data-theme="dark-saas"] .bg-yellow-500\/10 { background-color: rgba(59,130,246,0.1) !important; }
+
+/* Transparan Hover'lar */
+[data-theme="dark-saas"] .hover\:bg-gray-800:hover,
+[data-theme="dark-saas"] .hover\:bg-gray-700:hover { background-color: rgba(255, 255, 255, 0.06) !important; }
+[data-theme="dark-saas"] .hover\:bg-gray-600:hover { background-color: rgba(255, 255, 255, 0.1) !important; }
+
+[data-theme="dark-saas"] input::placeholder, 
+[data-theme="dark-saas"] textarea::placeholder { color: #64748b !important; }
+
+[data-theme="dark-saas"] .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+[data-theme="dark-saas"] .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+[data-theme="dark-saas"] .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
