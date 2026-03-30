@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 
-const VerticalBanner = ({ adConfig, position = 'left' }) => {
+const VerticalBanner = ({ adConfig, position = 'left', isAllowed = true }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
-    if (adConfig && adConfig.isActive && adConfig.type === 'adsense') {
+    if (isAllowed && adConfig && adConfig.isActive && adConfig.type === 'adsense') {
       try {
         (window.adsbygoogle = window.adsbygoogle || []).push({});
       } catch (e) {
         console.error("AdSense error:", e);
       }
     }
-  }, [adConfig]);
+  }, [adConfig, isAllowed]);
 
   if (!adConfig || !adConfig.isActive) return null;
 

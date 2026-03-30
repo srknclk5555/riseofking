@@ -41,6 +41,7 @@ import ManualBanner from './components/ManualBanner';
 import TopCarouselBanner from './components/TopCarouselBanner';
 import VerticalBanner from './components/VerticalBanner';
 import ThemeSwitcher, { getStoredTheme, applyTheme } from './components/ThemeSwitcher';
+import AdSenseLoader from './components/AdSenseLoader';
 
 // --- APP ID ---
 const staticAppId = "rise_online_tracker_app";
@@ -693,12 +694,19 @@ export default function App() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Reklamların gösterilip gösterilmeyeceğini belirler:
+  // - Yükleme ekranında: HAYIR
+  // - Login/Kayıt ekranında (showAuth=true): HAYIR
+  // - Gizlilik politikası, Landing Page ve Ana uygulama: EVET
+  const isAdsAllowed = !loading && !showAuth;
+
   if (loading) return <div className="h-screen bg-gray-900 flex items-center justify-center text-yellow-500 font-bold text-2xl animate-pulse">VERİLER YÜKLENİYOR...</div>;
   
   if (!user) {
     if (showPrivacy) {
       return (
         <div className="flex flex-col h-screen bg-gray-900">
+          <AdSenseLoader isAllowed={isAdsAllowed} />
            <div className="p-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
               <span className="font-bold text-white tracking-widest uppercase text-sm">Gizlilik Politikası</span>
               <button 
@@ -715,11 +723,16 @@ export default function App() {
 
     if (!showAuth) {
       return (
-        <LandingPage 
-          onLogin={() => { setShowAuth(true); setIsRegistering(false); }}
-          onRegister={() => { setShowAuth(true); setIsRegistering(true); }}
-          onViewPrivacy={() => setShowPrivacy(true)}
-        />
+        <>
+          <AdSenseLoader isAllowed={isAdsAllowed} />
+          <LandingPage 
+            onLogin={() => { setShowAuth(true); setIsRegistering(false); }}
+            onRegister={() => { setShowAuth(true); setIsRegistering(true); }}
+            onViewPrivacy={() => setShowPrivacy(true)}
+            adSettings={adSettings}
+            isAdsAllowed={isAdsAllowed}
+          />
+        </>
       );
     }
     return (
@@ -735,6 +748,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-gray-100 overflow-hidden font-sans relative">
+      <AdSenseLoader isAllowed={isAdsAllowed} />
       <Notification message={notification.message} type={notification.type} onClose={() => setNotification({ message: null, type: 'success' })} />
 
       {/* ANA SCROLL KONTEYNERİ */}
@@ -761,7 +775,10 @@ export default function App() {
               )}
               
               {/* Yan Menü Reklamı */}
-              <ManualBanner adConfig={{ ...adSettings.sidebarAd, isActive: adSettings.visibility.sidebar }} />
+              <ManualBanner 
+                adConfig={{ ...adSettings.sidebarAd, isActive: adSettings.visibility.sidebar }} 
+                isAllowed={isAdsAllowed}
+              />
             </nav>
             <div className="p-4 bg-gray-900 border-t border-gray-700">
               <div className="flex flex-col items-center">
@@ -777,8 +794,16 @@ export default function App() {
 
           <main className="flex-1 flex flex-col relative">
             {/* Dikey Reklamlar (Fixed Viewport) */}
-            <VerticalBanner adConfig={{ ...adSettings.leftAd, isActive: adSettings.visibility.left }} position="left" />
-            <VerticalBanner adConfig={{ ...adSettings.rightAd, isActive: adSettings.visibility.right }} position="right" />
+            <VerticalBanner 
+              adConfig={{ ...adSettings.leftAd, isActive: adSettings.visibility.left }} 
+              position="left" 
+              isAllowed={isAdsAllowed}
+            />
+            <VerticalBanner 
+              adConfig={{ ...adSettings.rightAd, isActive: adSettings.visibility.right }} 
+              position="right" 
+              isAllowed={isAdsAllowed}
+            />
 
             <header className="h-16 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-6 shadow-md z-20 sticky top-0 shrink-0">
           <div className="flex items-center gap-4">
@@ -861,6 +886,7 @@ export default function App() {
             interval={adSettings.carouselInterval} 
             isActive={adSettings.visibility.top} 
             height={adSettings.topHeight}
+            isAllowed={isAdsAllowed}
           />
         </div>
 

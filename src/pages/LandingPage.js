@@ -11,6 +11,10 @@ import {
   BarChart as ReBarChart, Bar as ReBar, PieChart as RePieChart, Pie as RePie, Cell
 } from 'recharts';
 
+import AdSenseLoader from '../components/AdSenseLoader';
+import TopCarouselBanner from '../components/TopCarouselBanner';
+import VerticalBanner from '../components/VerticalBanner';
+
 // --- MOCK DATA ---
 const MOCK_STATS = [
   { name: 'Pzt', farm: 12.5, gathering: 4.2 }, { name: 'Sal', farm: 8.2, gathering: 6.8 },
@@ -369,8 +373,25 @@ const DemoUI = () => {
   );
 };
 
-const LandingPage = ({ onLogin, onRegister, onViewPrivacy }) => (
+const LandingPage = ({ onLogin, onRegister, onViewPrivacy, adSettings, isAdsAllowed }) => (
   <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans selection:bg-blue-500/30">
+    <AdSenseLoader isAllowed={isAdsAllowed} />
+    
+    {adSettings && (
+      <>
+        <VerticalBanner 
+          adConfig={{ ...adSettings.leftAd, isActive: adSettings.visibility.left }} 
+          position="left" 
+          isAllowed={isAdsAllowed}
+        />
+        <VerticalBanner 
+          adConfig={{ ...adSettings.rightAd, isActive: adSettings.visibility.right }} 
+          position="right" 
+          isAllowed={isAdsAllowed}
+        />
+      </>
+    )}
+
     <nav className="fixed top-0 w-full z-[60] bg-[#0f172a]/80 backdrop-blur-md border-b border-slate-800 h-16 flex items-center">
       <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
         <div className="flex items-center gap-2"><div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-blue-500/20"><TrendingUp className="text-white" size={24} /></div><span className="text-xl font-black text-white tracking-tighter italic uppercase">LOOTMETRIC</span></div>
@@ -378,7 +399,20 @@ const LandingPage = ({ onLogin, onRegister, onViewPrivacy }) => (
         <div className="flex gap-4 items-center"><button onClick={onLogin} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors">Giriş</button><button onClick={onRegister} className="bg-blue-600 text-white text-xs font-black px-5 py-2.5 rounded-xl uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all">BAŞLA</button></div>
       </div>
     </nav>
-    <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden px-4">
+    
+    {adSettings && (
+      <div className="pt-16">
+        <TopCarouselBanner 
+          ads={adSettings.topAds} 
+          interval={adSettings.carouselInterval} 
+          isActive={adSettings.visibility.top} 
+          height={adSettings.topHeight}
+          isAllowed={isAdsAllowed}
+        />
+      </div>
+    )}
+
+    <section className="relative pt-16 pb-20 lg:pt-32 lg:pb-32 overflow-hidden px-4">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-7xl pointer-events-none"><div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" /></div>
       <div className="max-w-7xl mx-auto relative text-center">
         <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full text-blue-400 text-[10px] font-black mb-6 uppercase tracking-[0.3em] lg:animate-bounce"><Zap size={14} /> Rise Online World v3.0 Powered By LootMetric</div>

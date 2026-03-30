@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 
-const TopCarouselBanner = ({ ads, interval = 4000, isActive, height = 80 }) => {
+const TopCarouselBanner = ({ ads, interval = 4000, isActive, height = 80, isAllowed = true }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
@@ -15,14 +15,14 @@ const TopCarouselBanner = ({ ads, interval = 4000, isActive, height = 80 }) => {
   }, [isActive, ads, interval]);
 
   useEffect(() => {
-    if (isActive && ads && ads[currentIndex]?.type === 'adsense') {
+    if (isAllowed && isActive && ads && ads[currentIndex]?.type === 'adsense') {
       try {
         (window.adsbygoogle = window.adsbygoogle || []).push({});
       } catch (e) {
         console.error("AdSense error (Carousel):", e);
       }
     }
-  }, [isActive, ads, currentIndex]);
+  }, [isActive, ads, currentIndex, isAllowed]);
 
   if (!isActive || !ads || ads.length === 0) return null;
 

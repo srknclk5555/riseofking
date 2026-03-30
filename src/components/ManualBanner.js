@@ -1,16 +1,16 @@
 import React, { useEffect } from 'react';
 import { X, ExternalLink } from 'lucide-react';
 
-const ManualBanner = ({ adConfig, onClose }) => {
+const ManualBanner = ({ adConfig, onClose, isAllowed = true }) => {
   useEffect(() => {
-    if (adConfig && adConfig.isActive && adConfig.type === 'adsense') {
+    if (isAllowed && adConfig && adConfig.isActive && adConfig.type === 'adsense') {
       try {
         (window.adsbygoogle = window.adsbygoogle || []).push({});
       } catch (e) {
         console.error("AdSense error (Manual):", e);
       }
     }
-  }, [adConfig]);
+  }, [adConfig, isAllowed]);
 
   if (!adConfig || !adConfig.isActive) return null;
 
